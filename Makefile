@@ -1,3 +1,4 @@
+SHELL:=/usr/bin/bash
 CXX=clang++
 CXXFLAGS=-Wall -pipe -std=c++17
 GLSLC=glslc
@@ -8,7 +9,7 @@ GLFW=glfw-3.4.bin.WIN64
 GLFW_LIB=lib-static-ucrt
 LDPATHS='-L$(DEPS)/$(GLFW)/$(GLFW_LIB)' '-L$(VULKAN_SDK)/Lib'
 INCLUDE_PATHS='-I$(DEPS)/glfw-3.4.bin.WIN64/include' '-I$(VULKAN_SDK)\Include'
-SRC=$(wildcard *.cpp)
+SRC=$(wildcard src/*.cpp)
 OUTDIR=build
 DBG_OBJ=$(SRC:%.cpp=$(OUTDIR)/Debug/obj/%.o)
 REL_OBJ=$(SRC:%.cpp=$(OUTDIR)/Release/obj/%.o)
@@ -29,11 +30,11 @@ debug: $(DBG_OUT)
 release: $(REL_OUT)
 
 $(DBG_OBJ): check_deps
-	mkdir -p $(OUTDIR)/Debug/obj
+	mkdir -p $$(dirname $(DBG_OBJ))
 	$(CXX) -c $(INCLUDE_PATHS) $(CXXFLAGS) $(SRC) -o $@
 
 $(REL_OBJ): check_deps
-	mkdir -p $(OUTDIR)/Release/obj
+	mkdir -p $$(dirname $(REL_OBJ))
 	$(CXX) -c $(INCLUDE_PATHS) $(CXXFLAGS) $(SRC) -o $@
 
 $(REL_OUT): $(REL_OBJ)
