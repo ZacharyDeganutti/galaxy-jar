@@ -11,6 +11,8 @@ LDPATHS='-L$(DEPS)/$(GLFW)/$(GLFW_LIB)' '-L$(VULKAN_SDK)/Lib'
 INCLUDE_PATHS='-I$(DEPS)/glfw-3.4.bin.WIN64/include' '-I$(VULKAN_SDK)\Include'
 SRC=$(wildcard src/*.cpp)
 OUTDIR=build
+DBG_OBJ_PATH=$(OUTDIR)/Debug/obj
+REL_OBJ_PATH=$(OUTDIR)/Release/obj
 DBG_OBJ=$(SRC:%.cpp=$(OUTDIR)/Debug/obj/%.o)
 REL_OBJ=$(SRC:%.cpp=$(OUTDIR)/Release/obj/%.o)
 SHADERSRC=$(wildcard *.glsl)
@@ -29,13 +31,13 @@ debug release: $(SHADEROBJ)
 debug: $(DBG_OUT)
 release: $(REL_OUT)
 
-$(DBG_OBJ): check_deps
+$(DBG_OBJ): $(DBG_OBJ_PATH)/%.o: %.cpp check_deps
 	mkdir -p $$(dirname $(DBG_OBJ))
-	$(CXX) -c $(INCLUDE_PATHS) $(CXXFLAGS) $(SRC) -o $@
+	$(CXX) -c $(INCLUDE_PATHS) $(CXXFLAGS) $< -o $@
 
-$(REL_OBJ): check_deps
+$(REL_OBJ): $(REL_OBJ_PATH)/%.o: %.cpp check_deps
 	mkdir -p $$(dirname $(REL_OBJ))
-	$(CXX) -c $(INCLUDE_PATHS) $(CXXFLAGS) $(SRC) -o $@
+	$(CXX) -c $(INCLUDE_PATHS) $(CXXFLAGS) $< -o $@
 
 $(REL_OUT): $(REL_OBJ)
 	mkdir -p $(OUTDIR)/Release/bin
