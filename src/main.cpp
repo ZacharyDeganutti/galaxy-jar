@@ -21,7 +21,7 @@ int main() {
 
     // Initialize vulkan
     VkInstance vulkan_instance = vk_layer::init_instance(glfw_extension_count, glfw_extensions);
-
+    VkPhysicalDevice gpu = vk_layer::init_physical_device(vulkan_instance);
     while(!glfwWindowShouldClose(window)) {
         glfwPollEvents();
     }

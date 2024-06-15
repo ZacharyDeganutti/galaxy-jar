@@ -8,14 +8,12 @@
   "version": "0.2.0",
   "configurations": [
     {
-      "name": "C++ makefile lldb debug launch",
-      "type": "lldb",
+      "name": "C++ makefile debug launch",
+      "type": "cppvsdbg",
       "request": "launch",
       "program": "${workspaceFolder}/build/Debug/bin/galaxy-jar.exe",
-      "breakpointMode": "file",
-      "args": [""],
-      "cwd": "${workspaceFolder}",
       "preLaunchTask": "makefile debug build",
+      "cwd": "${workspaceFolder}/build/Debug/bin/"
     }
   ]
 }
