@@ -20,13 +20,12 @@ int main() {
     glfw_extensions = glfwGetRequiredInstanceExtensions(&glfw_extension_count);
 
     // Initialize vulkan
-    VkInstance vulkan_instance = vk_layer::init_instance(glfw_extension_count, glfw_extensions);
-    VkPhysicalDevice gpu = vk_layer::init_physical_device(vulkan_instance);
+    vk_layer::Resources vulkan_resources = vk_layer::init(glfw_extension_count, glfw_extensions, window);
     while(!glfwWindowShouldClose(window)) {
         glfwPollEvents();
     }
 
-    vk_layer::cleanup(vulkan_instance);
+    vk_layer::cleanup(vulkan_resources);
     glfwDestroyWindow(window);
     glfwTerminate();
     

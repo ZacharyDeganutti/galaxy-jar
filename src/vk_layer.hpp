@@ -2,14 +2,19 @@
 #define VK_LAYER_H_
 
 #include <vulkan/vulkan.h>
+#include <GLFW/glfw3.h>
 
 namespace vk_layer
 {
-    VkInstance init_instance(int extension_count, const char** extension_names);
-    VkPhysicalDevice init_physical_device(VkInstance instance);
-    VkDevice init_logical_device(VkPhysicalDevice gpu);
+    typedef struct Resources {
+        VkInstance instance;
+        VkPhysicalDevice gpu;
+        VkDevice device;
+        VkSurfaceKHR surface;
+    } Resources;
 
-    void cleanup(VkInstance instance);
+    Resources init(int extension_count, const char** extension_names, GLFWwindow* window);
+    void cleanup(Resources& resources);
 } // namespace vk_layer
 
 #endif // VK_LAYER_H_
