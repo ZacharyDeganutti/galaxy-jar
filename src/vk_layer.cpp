@@ -222,28 +222,19 @@ namespace vk_layer {
                 exit(EXIT_FAILURE);
             }
 
-            float queue_priority = 1.0f;
-            VkDeviceQueueCreateInfo device_graphics_queue_create_info{};
-            device_graphics_queue_create_info.sType = VK_STRUCTURE_TYPE_DEVICE_QUEUE_CREATE_INFO;
-            device_graphics_queue_create_info.queueFamilyIndex = graphics_queue_family_indices[0];
-            device_graphics_queue_create_info.queueCount = 1;
-            device_graphics_queue_create_info.pQueuePriorities = &queue_priority;
-
-            VkDeviceQueueCreateInfo device_presentation_queue_create_info{};
-            device_presentation_queue_create_info.sType = VK_STRUCTURE_TYPE_DEVICE_QUEUE_CREATE_INFO;
-            device_presentation_queue_create_info.queueFamilyIndex = presentation_queue_family_indices[0];
-            device_presentation_queue_create_info.queueCount = 1;
-            device_presentation_queue_create_info.pQueuePriorities = &queue_priority;
-
-            // If the default queue family supports both graphics and presentation, just collapse those together
-            std::unordered_set<uint32_t> used_queue_indices = {};
+            std::unordered_set<uint32_t> queue_indices = {
+                graphics_queue_family_indices[0], 
+                presentation_queue_family_indices[0],
+            };
             std::vector<VkDeviceQueueCreateInfo> queue_create_infos = {};
-            auto insert_check = used_queue_indices.insert(device_graphics_queue_create_info.queueFamilyIndex);
-            queue_create_infos.push_back(device_graphics_queue_create_info);
-            insert_check = used_queue_indices.insert(device_presentation_queue_create_info.queueFamilyIndex);
-            // Only insert if the presentation queue family is different from the graphics queue family
-            if (insert_check.second) {
-                queue_create_infos.push_back(device_presentation_queue_create_info);
+            float queue_priority = 1.0f; 
+            for (auto queue_index : queue_indices) {
+                VkDeviceQueueCreateInfo device_queue_create_info{};
+                device_queue_create_info.sType = VK_STRUCTURE_TYPE_DEVICE_QUEUE_CREATE_INFO;
+                device_queue_create_info.queueFamilyIndex = graphics_queue_family_indices[0];
+                device_queue_create_info.queueCount = 1;
+                device_queue_create_info.pQueuePriorities = &queue_priority;
+                queue_create_infos.push_back(device_queue_create_info);
             }
 
             VkPhysicalDeviceFeatures device_features{};
