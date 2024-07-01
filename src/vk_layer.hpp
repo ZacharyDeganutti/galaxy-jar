@@ -3,17 +3,27 @@
 
 #include <vulkan/vulkan.h>
 #include <GLFW/glfw3.h>
+#include <vector>
 
 namespace vk_layer
 {
-    typedef struct Resources {
+    struct Swapchain {
+        VkSwapchainKHR handle;
+        VkFormat format;
+        VkExtent2D extent;
+        std::vector<VkImage> images;
+        std::vector<VkImageView> views;
+    };
+
+    struct Resources {
         VkInstance instance;
         VkPhysicalDevice gpu;
         VkDevice device;
         VkSurfaceKHR surface;
-    } Resources;
+        Swapchain swapchain;
+    };
 
-    Resources init(int extension_count, const char** extension_names, GLFWwindow* window);
+    Resources init(const std::vector<const char*>& required_device_extensions, const std::vector<const char*>& glfw_extensions, GLFWwindow* window);
     void cleanup(Resources& resources);
 } // namespace vk_layer
 
