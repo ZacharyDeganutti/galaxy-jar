@@ -3,12 +3,13 @@ CXX=clang++
 CXXFLAGS=-Wall -pipe -std=c++17
 GLSLC=glslc
 GLSLFLAGS=
-DEPS=external
+LIBS_PATH=external
+DEPS=$(LIBS_PATH)/VulkanMemoryAllocator-3.1.0 $(LIBS_PATH)/glfw-3.4.bin.WIN64 $(LIBS_PATH)
 LDFLAGS= -lglfw3dll -lvulkan-1
 GLFW=glfw-3.4.bin.WIN64
 GLFW_LIB=lib-static-ucrt
-LDPATHS='-L$(DEPS)/$(GLFW)/$(GLFW_LIB)' '-L$(VULKAN_SDK)/Lib'
-INCLUDE_PATHS='-I$(DEPS)/glfw-3.4.bin.WIN64/include' '-I$(VULKAN_SDK)\Include'
+LDPATHS='-L$(LIBS_PATH)/$(GLFW)/$(GLFW_LIB)' '-L$(VULKAN_SDK)/Lib'
+INCLUDE_PATHS='-I$(LIBS_PATH)/glfw-3.4.bin.WIN64/include' '-I$(VULKAN_SDK)\Include'
 SRC=$(wildcard src/*.cpp)
 OUTDIR=build
 DBG_OBJ_PATH=$(OUTDIR)/Debug/obj
@@ -41,12 +42,12 @@ $(REL_OBJ): $(REL_OBJ_PATH)/%.o: %.cpp check_deps
 
 $(REL_OUT): $(REL_OBJ)
 	mkdir -p $(OUTDIR)/Release/bin
-	cp $(DEPS)/$(GLFW)/$(GLFW_LIB)/glfw3.dll $(OUTDIR)/Release/bin
+	cp $(LIBS_PATH)/$(GLFW)/$(GLFW_LIB)/glfw3.dll $(OUTDIR)/Release/bin
 	$(CXX) -v $(CXXFLAGS) $(REL_OBJ) $(LDPATHS) $(LDFLAGS) -o $@
 
 $(DBG_OUT): $(DBG_OBJ)
 	mkdir -p $(OUTDIR)/Debug/bin
-	cp $(DEPS)/$(GLFW)/$(GLFW_LIB)/glfw3.dll $(OUTDIR)/Debug/bin
+	cp $(LIBS_PATH)/$(GLFW)/$(GLFW_LIB)/glfw3.dll $(OUTDIR)/Debug/bin
 	$(CXX) -v $(CXXFLAGS) $(DBG_OBJ) $(LDPATHS) $(LDFLAGS) -o $@
 
 %.vert.spv: %.vert.glsl check_deps 

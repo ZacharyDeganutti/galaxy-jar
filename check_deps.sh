@@ -10,4 +10,9 @@ if [ ! -f external/glfw-3.4.bin.WIN64/lib-mingw-w64/glfw3.dll ]; then
     exit 1;
 fi
 
+if [ ! -f external/VulkanMemoryAllocator-3.1.0/include/vk_mem_alloc.h ]; then
+    echo "VMA library not found, run 'make download'";
+    exit 1;
+fi
+
 exit 0;
