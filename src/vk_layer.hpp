@@ -15,12 +15,18 @@ namespace vk_layer
         std::vector<VkImageView> views;
     };
 
+    struct Command {
+        VkCommandPool pool;
+        VkCommandBuffer buffer_primary;
+    };
+
     struct Resources {
         VkInstance instance;
         VkPhysicalDevice gpu;
         VkDevice device;
         VkSurfaceKHR surface;
         Swapchain swapchain;
+        std::vector<Command> command;
     };
 
     Resources init(const std::vector<const char*>& required_device_extensions, const std::vector<const char*>& glfw_extensions, GLFWwindow* window);

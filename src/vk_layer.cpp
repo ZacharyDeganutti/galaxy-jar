@@ -474,11 +474,43 @@ namespace vk_layer {
         }
     }
 
+    std::vector<Command> init_command(VkDevice device, GpuAndQueueInfo gpu, Swapchain swapchain) {
+        size_t image_count = swapchain.images.size();
+        std::vector<Command> command_data(image_count, Command{});
+        VkCommandPoolCreateInfo command_pool_info = {};
+        command_pool_info.sType = VK_STRUCTURE_TYPE_COMMAND_POOL_CREATE_INFO;
+        command_pool_info.pNext = nullptr;
+        command_pool_info.flags = VK_COMMAND_POOL_CREATE_RESET_COMMAND_BUFFER_BIT;
+        command_pool_info.queueFamilyIndex = gpu.graphics.indices[0];
+
+        for (size_t i = 0; i < swapchain.images.size(); ++i) {
+            VkResult command_pool_result = vkCreateCommandPool(device, &command_pool_info, nullptr, &(command_data[i].pool));
+            if (command_pool_result != VK_SUCCESS) {
+                printf("Unable to create command pool for frame %d\n", i);
+                exit(EXIT_FAILURE);
+            }
+            VkCommandBufferAllocateInfo command_buffer_alloc_info = {};
+            command_buffer_alloc_info.sType = VK_STRUCTURE_TYPE_COMMAND_BUFFER_ALLOCATE_INFO;
+            command_buffer_alloc_info.pNext = nullptr;
+            command_buffer_alloc_info.commandPool = command_data[i].pool;
+            command_buffer_alloc_info.commandBufferCount = 1;
+            command_buffer_alloc_info.level = VK_COMMAND_BUFFER_LEVEL_PRIMARY;
+
+            VkResult command_buffer_result = vkAllocateCommandBuffers(device, &command_buffer_alloc_info, &(command_data[i].buffer_primary));
+            if (command_buffer_result != VK_SUCCESS) {
+                printf("Unable to create command buffer(s) for frame %d\n", i);
+                exit(EXIT_FAILURE);
+            }
+        }
+
+        return command_data;
+    }
+
     Resources init(const std::vector<const char*>& required_device_extensions, const std::vector<const char*>& glfw_extensions, GLFWwindow* window) {
-        VkInstance vulkan_instance = vk_layer::init_instance(glfw_extensions.size(), glfw_extensions.data());
-        VkSurfaceKHR vulkan_surface = vk_layer::init_surface(vulkan_instance, window);
-        vk_layer::GpuAndQueueInfo vulkan_gpu = vk_layer::init_physical_device(vulkan_instance, required_device_extensions, vulkan_surface);
-        VkDevice vulkan_device = vk_layer::init_logical_device(vulkan_gpu, required_device_extensions);
+        VkInstance vulkan_instance = init_instance(glfw_extensions.size(), glfw_extensions.data());
+        VkSurfaceKHR vulkan_surface = init_surface(vulkan_instance, window);
+        GpuAndQueueInfo vulkan_gpu = init_physical_device(vulkan_instance, required_device_extensions, vulkan_surface);
+        VkDevice vulkan_device = init_logical_device(vulkan_gpu, required_device_extensions);
         
         int w;
         int h;
@@ -486,7 +518,8 @@ namespace vk_layer {
         uint32_t width = static_cast<uint32_t>(w);
         uint32_t height = static_cast<uint32_t>(h);
 
-        Swapchain swapchain = vk_layer::init_swapchain(vulkan_device, vulkan_gpu, vulkan_surface, width, height);
+        Swapchain swapchain = init_swapchain(vulkan_device, vulkan_gpu, vulkan_surface, width, height);
+        std::vector<Command> command = init_command(vulkan_device, vulkan_gpu, swapchain);
 
         return Resources {
             vulkan_instance,
@@ -494,10 +527,15 @@ namespace vk_layer {
             vulkan_device,
             vulkan_surface,
             swapchain,
+            command
         };
     }
 
     void cleanup(Resources& resources) {
+        vkDeviceWaitIdle(resources.device);
+        for (auto command : resources.command) {
+            vkDestroyCommandPool(resources.device, command.pool, nullptr);
+        }
         for (auto image_view : resources.swapchain.views) {
             vkDestroyImageView(resources.device, image_view, nullptr);
         }
