@@ -27,8 +27,14 @@ int main() {
 
     // Initialize vulkan
     vk_layer::Resources vulkan_resources = vk_layer::init(required_device_extensions, glfw_extensions, window);
+    vk_layer::DrawState draw_state = {
+        .not_first_frame = false,
+        .buf_num = 0,
+        .frame_num = 0
+    };
     while(!glfwWindowShouldClose(window)) {
         glfwPollEvents();
+        draw_state = vk_layer::draw(vulkan_resources, draw_state);
     }
 
     vk_layer::cleanup(vulkan_resources);
