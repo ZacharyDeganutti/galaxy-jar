@@ -3,6 +3,8 @@
 #include <vector>
 #include <stdio.h>
 
+#include "vk_types.hpp"
+#include "vk_init.hpp"
 #include "vk_layer.hpp"
 
 int main() {
@@ -24,9 +26,11 @@ int main() {
     std::vector<const char*> required_device_extensions = {
         VK_KHR_SWAPCHAIN_EXTENSION_NAME
     };
+    // Setup tracker for resources that need to be cleaned up
+    vk_init::CleanupProcedures cleanup_procedures{};
 
     // Initialize vulkan
-    vk_layer::Resources vulkan_resources = vk_layer::init(required_device_extensions, glfw_extensions, window);
+    vk_types::Resources vulkan_resources = vk_init::init(required_device_extensions, glfw_extensions, window, cleanup_procedures);
     vk_layer::DrawState draw_state = {
         .not_first_frame = false,
         .buf_num = 0,
@@ -37,7 +41,7 @@ int main() {
         draw_state = vk_layer::draw(vulkan_resources, draw_state);
     }
 
-    vk_layer::cleanup(vulkan_resources);
+    vk_layer::cleanup(vulkan_resources, cleanup_procedures);
     glfwDestroyWindow(window);
     glfwTerminate();
     

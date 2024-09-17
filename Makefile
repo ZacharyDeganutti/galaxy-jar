@@ -1,6 +1,6 @@
 SHELL:=/usr/bin/bash
 CXX=clang++
-CXXFLAGS=-Wall -pipe -std=c++17
+CXXFLAGS=-Wall -pipe -std=c++20 -Werror=return-type
 GLSLC=glslc
 GLSLFLAGS=
 LIBS_PATH=external
@@ -9,15 +9,15 @@ LDFLAGS= -lglfw3dll -lvulkan-1
 GLFW=glfw-3.4.bin.WIN64
 GLFW_LIB=lib-static-ucrt
 LDPATHS='-L$(LIBS_PATH)/$(GLFW)/$(GLFW_LIB)' '-L$(VULKAN_SDK)/Lib'
-INCLUDE_PATHS='-I$(LIBS_PATH)/glfw-3.4.bin.WIN64/include' '-I$(VULKAN_SDK)\Include'
+INCLUDE_PATHS='-I$(LIBS_PATH)/VulkanMemoryAllocator-3.1.0/include' '-I$(LIBS_PATH)/glfw-3.4.bin.WIN64/include' '-I$(VULKAN_SDK)\Include'
 SRC=$(wildcard src/*.cpp)
 OUTDIR=build
 DBG_OBJ_PATH=$(OUTDIR)/Debug/obj
 REL_OBJ_PATH=$(OUTDIR)/Release/obj
 DBG_OBJ=$(SRC:%.cpp=$(OUTDIR)/Debug/obj/%.o)
 REL_OBJ=$(SRC:%.cpp=$(OUTDIR)/Release/obj/%.o)
-SHADERSRC=$(wildcard *.glsl)
-SHADEROBJ=$(SHADERSRC:.glsl=.spv)
+SHADERSRC=$(wildcard *.glsl.*)
+SHADEROBJ=$(SHADERSRC).spv
 DBG_OUT=$(OUTDIR)/Debug/bin/galaxy-jar.exe
 REL_OUT=$(OUTDIR)/Release/bin/galaxy-jar.exe
 
