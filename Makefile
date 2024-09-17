@@ -16,8 +16,9 @@ DBG_OBJ_PATH=$(OUTDIR)/Debug/obj
 REL_OBJ_PATH=$(OUTDIR)/Release/obj
 DBG_OBJ=$(SRC:%.cpp=$(OUTDIR)/Debug/obj/%.o)
 REL_OBJ=$(SRC:%.cpp=$(OUTDIR)/Release/obj/%.o)
-SHADERSRC=$(wildcard *.glsl.*)
-SHADEROBJ=$(SHADERSRC).spv
+SHADERPATH=src/shaders
+SHADERSRC=$(wildcard $(SHADERPATH)/*.glsl.comp) $(wildcard $(SHADERPATH)/*.glsl.vert) $(wildcard $(SHADERPATH)/*.glsl.frag)
+SHADEROBJ=$(SHADERSRC:=.spv)
 DBG_OUT=$(OUTDIR)/Debug/bin/galaxy-jar.exe
 REL_OUT=$(OUTDIR)/Release/bin/galaxy-jar.exe
 
@@ -50,11 +51,18 @@ $(DBG_OUT): $(DBG_OBJ)
 	cp $(LIBS_PATH)/$(GLFW)/$(GLFW_LIB)/glfw3.dll $(OUTDIR)/Debug/bin
 	$(CXX) -v $(CXXFLAGS) $(DBG_OBJ) $(LDPATHS) $(LDFLAGS) -o $@
 
-%.vert.spv: %.vert.glsl check_deps 
+%.vert.spv: %.glsl.vert check_deps 
 	$(GLSLC) $(GLSLFLAGS) -fshader-stage=vert $< -o $@
 
-%.frag.spv: %.frag.glsl check_deps
+%.frag.spv: %.glsl.vert check_deps
 	$(GLSLC) $(GLSLFLAGS) -fshader-stage=frag $< -o $@
+
+%.comp.spv: %.glsl.comp check_deps
+	$(GLSLC) $(GLSLFLAGS) -fshader-stage=comp $< -o $@
+
+$(SHADEROBJ): %.spv: %
+	echo $(SHADERSRC)
+	$(GLSLC) $(GLSLFLAGS) $< -o $@
 
 run_debug: debug
 	./$(DBG_OUT)
@@ -63,7 +71,7 @@ run_release: release
 	./$(REL_OUT)
 
 clean:
-	-rm $(SHADEROBJ)
+	-rm -r $(SHADEROBJ)
 	-rm -r $(OUTDIR)
 
 cleanall: clean

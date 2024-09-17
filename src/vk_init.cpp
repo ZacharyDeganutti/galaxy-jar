@@ -982,7 +982,7 @@ namespace vk_init {
         VkDescriptorSet compute_descriptor_set = init_image_descriptors(vulkan_device, draw_target.image_view, compute_descriptor_layout, descriptor_allocator, cleanup_procedures);
 
         // Assemble the compute pipeline
-        VkShaderModule compute_shader = init_shader_module(vulkan_device, "src/shaders/gradient.glsl.comp.spv", cleanup_procedures);
+        VkShaderModule compute_shader = init_shader_module(vulkan_device, "../../../src/shaders/gradient.glsl.comp.spv", cleanup_procedures);
         vk_types::Pipeline compute_pipeline = init_compute_pipeline(vulkan_device, compute_shader, compute_descriptor_layout, compute_descriptor_set, cleanup_procedures);
 
         return vk_types::Resources {
