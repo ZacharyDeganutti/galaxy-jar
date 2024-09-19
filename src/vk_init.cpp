@@ -68,7 +68,9 @@ namespace vk_init {
     VkDescriptorSet init_image_descriptors(const VkDevice device, const VkImageView image_view, const VkDescriptorSetLayout descriptor_layout, DescriptorAllocator& descriptor_allocator, CleanupProcedures& cleanup_procedures);
     VmaAllocator init_allocator(const VkInstance instance, const VkDevice device, const GpuAndQueueInfo& gpu, CleanupProcedures& cleanup_procedures);
     VkShaderModule init_shader_module(const VkDevice device, const char *file_path, CleanupProcedures& cleanup_procedures);
-    vk_types::Pipeline init_compute_pipeline(const VkDevice device, const VkShaderModule shader_module, const VkDescriptorSetLayout descriptor_layout, const VkDescriptorSet descriptor_set, CleanupProcedures& cleanup_procedures);
+    VkPipelineLayout init_pipeline_layout(const VkDevice device, const std::vector<VkDescriptorSetLayout>& descriptor_set_layouts, CleanupProcedures& cleanup_procedures);
+    vk_types::Pipeline init_compute_pipeline(const VkDevice device, const VkPipelineLayout compute_pipeline_layout, const VkShaderModule shader_module, const VkDescriptorSet descriptor_set, CleanupProcedures& cleanup_procedures);
+    vk_types::Pipeline init_graphics_pipeline(const VkDevice device, const VkPipelineLayout pipeline_layout, const VkFormat& target_format, const VkShaderModule vert_shader_module, const VkShaderModule frag_shader_module, const VkDescriptorSet descriptor_set, CleanupProcedures& cleanup_procedures);
 }
 
 namespace vk_init {
@@ -884,31 +886,40 @@ namespace vk_init {
         return allocator;
     }
 
-    vk_types::Pipeline init_compute_pipeline(const VkDevice device, const VkShaderModule shader_module, const VkDescriptorSetLayout descriptor_layout, const VkDescriptorSet descriptor_set, CleanupProcedures& cleanup_procedures) {
-        // First create the layout (maybe factor this out later)
-        VkPipelineLayoutCreateInfo compute_layout_info{};
-        compute_layout_info.sType = VK_STRUCTURE_TYPE_PIPELINE_LAYOUT_CREATE_INFO;
-        compute_layout_info.pNext = nullptr;
-        compute_layout_info.pSetLayouts = &descriptor_layout;
-        compute_layout_info.setLayoutCount = 1;
+    VkPipelineLayout init_pipeline_layout(const VkDevice device, const std::vector<VkDescriptorSetLayout>& descriptor_set_layouts, CleanupProcedures& cleanup_procedures) {
+        VkPipelineLayoutCreateInfo layout_info{};
+        layout_info.sType = VK_STRUCTURE_TYPE_PIPELINE_LAYOUT_CREATE_INFO;
+        layout_info.pNext = nullptr;
+        layout_info.pSetLayouts = descriptor_set_layouts.data();
+        layout_info.setLayoutCount = static_cast<uint32_t>(descriptor_set_layouts.size());
 
-        VkPipelineLayout compute_pipeline_layout = {};
-        if(vkCreatePipelineLayout(device, &compute_layout_info, nullptr, &compute_pipeline_layout) != VK_SUCCESS) {
+        VkPipelineLayout pipeline_layout = {};
+        if(vkCreatePipelineLayout(device, &layout_info, nullptr, &pipeline_layout) != VK_SUCCESS) {
             printf("Unable to create compute pipeline layout\n");
             exit(EXIT_FAILURE);
         }
 
-        cleanup_procedures.add([device, compute_pipeline_layout]() {
-            vkDestroyPipelineLayout(device, compute_pipeline_layout, nullptr);
+        cleanup_procedures.add([device, pipeline_layout]() {
+            vkDestroyPipelineLayout(device, pipeline_layout, nullptr);
         });
 
+        return pipeline_layout;
+    }
+
+    VkPipelineShaderStageCreateInfo make_shader_stage_info(VkShaderStageFlagBits stage_flags, VkShaderModule module) {
         // Then create the pipeline (this is somewhat specific to pipeline type)
         VkPipelineShaderStageCreateInfo stage_info{};
         stage_info.sType = VK_STRUCTURE_TYPE_PIPELINE_SHADER_STAGE_CREATE_INFO;
         stage_info.pNext = nullptr;
-        stage_info.stage = VK_SHADER_STAGE_COMPUTE_BIT;
-        stage_info.module = shader_module;
+        stage_info.stage = stage_flags;
+        stage_info.module = module;
         stage_info.pName = "main";
+
+        return stage_info;
+    }
+
+    vk_types::Pipeline init_compute_pipeline(const VkDevice device, const VkPipelineLayout compute_pipeline_layout, const VkShaderModule shader_module, const VkDescriptorSet descriptor_set, CleanupProcedures& cleanup_procedures) {
+        VkPipelineShaderStageCreateInfo stage_info = make_shader_stage_info(VK_SHADER_STAGE_COMPUTE_BIT, shader_module);
 
         VkComputePipelineCreateInfo compute_pipeline_info{};
         compute_pipeline_info.sType = VK_STRUCTURE_TYPE_COMPUTE_PIPELINE_CREATE_INFO;
@@ -933,6 +944,135 @@ namespace vk_init {
         pipeline.descriptors = descriptor_set;
 
         return pipeline;
+    }
+
+    vk_types::Pipeline init_graphics_pipeline(const VkDevice device, const VkPipelineLayout pipeline_layout, const VkFormat& target_format, const VkShaderModule vert_shader_module, const VkShaderModule frag_shader_module, const VkDescriptorSet descriptor_set, CleanupProcedures& cleanup_procedures) {
+        
+        /// Basic viewport setup
+        VkPipelineViewportStateCreateInfo viewport_info = {};
+        viewport_info.sType = VK_STRUCTURE_TYPE_PIPELINE_VIEWPORT_STATE_CREATE_INFO;
+        viewport_info.pNext = nullptr;
+        viewport_info.viewportCount = 1;
+        viewport_info.scissorCount = 1;
+
+        /// Basic blending info, no blending for now
+        VkPipelineColorBlendAttachmentState blend_attachment_state = {};
+        blend_attachment_state.blendEnable = VK_FALSE;
+        blend_attachment_state.colorWriteMask = 
+            VK_COLOR_COMPONENT_R_BIT
+            | VK_COLOR_COMPONENT_G_BIT
+            | VK_COLOR_COMPONENT_B_BIT
+            | VK_COLOR_COMPONENT_A_BIT;
+        VkPipelineColorBlendStateCreateInfo blend_info = {};
+        blend_info.sType = VK_STRUCTURE_TYPE_PIPELINE_COLOR_BLEND_STATE_CREATE_INFO;
+        blend_info.pNext = nullptr;
+        blend_info.logicOpEnable = VK_FALSE;
+        blend_info.logicOp = VK_LOGIC_OP_COPY;
+        blend_info.attachmentCount = 1;
+        blend_info.pAttachments = &blend_attachment_state;
+
+        /// VertexInputStateCreateInfo unused for now, clear it
+        VkPipelineVertexInputStateCreateInfo vertex_input_state_info = {};
+        vertex_input_state_info.sType = VK_STRUCTURE_TYPE_PIPELINE_VERTEX_INPUT_STATE_CREATE_INFO;
+
+        /// Input Assembly configured to draw triangles
+        VkPipelineInputAssemblyStateCreateInfo input_assembly_info = {};
+        input_assembly_info.sType = VK_STRUCTURE_TYPE_PIPELINE_INPUT_ASSEMBLY_STATE_CREATE_INFO;
+        input_assembly_info.pNext = nullptr;
+        input_assembly_info.primitiveRestartEnable = VK_FALSE;
+        // Simple but wasteful list of separate triangles
+        input_assembly_info.topology = VK_PRIMITIVE_TOPOLOGY_TRIANGLE_LIST;
+
+        /// Rasterization configuration
+        VkPipelineRasterizationStateCreateInfo rasterization_info = {};
+        rasterization_info.sType = VK_STRUCTURE_TYPE_PIPELINE_RASTERIZATION_STATE_CREATE_INFO;
+        rasterization_info.pNext = nullptr;
+        // Set up polygons
+        rasterization_info.polygonMode = VK_POLYGON_MODE_FILL;
+        rasterization_info.lineWidth = 1.0f;
+        // Culling and winding order
+        rasterization_info.cullMode = VK_CULL_MODE_BACK_BIT;
+        rasterization_info.frontFace = VK_FRONT_FACE_CLOCKWISE;
+
+        /// Multisampling configuration (AA, etc)
+        VkPipelineMultisampleStateCreateInfo multisampling_info = {};
+        multisampling_info.sType = VK_STRUCTURE_TYPE_PIPELINE_MULTISAMPLE_STATE_CREATE_INFO;
+        multisampling_info.pNext = nullptr;
+        multisampling_info.sampleShadingEnable = VK_FALSE;
+        multisampling_info.rasterizationSamples = VK_SAMPLE_COUNT_1_BIT;
+        multisampling_info.minSampleShading = 1.0f;
+        multisampling_info.pSampleMask = nullptr;
+        multisampling_info.alphaToCoverageEnable = VK_FALSE;
+        multisampling_info.alphaToOneEnable = VK_FALSE;
+
+        /// Set up rendering
+        VkPipelineRenderingCreateInfo rendering_info = {};
+        rendering_info.sType = VK_STRUCTURE_TYPE_PIPELINE_RENDERING_CREATE_INFO;
+        rendering_info.pNext = nullptr;
+        rendering_info.colorAttachmentCount = 1;
+        rendering_info.pColorAttachmentFormats = &target_format;
+        rendering_info.depthAttachmentFormat = VK_FORMAT_UNDEFINED; // Might need to be a depth format by default
+
+        /// Configure depth (disabled by default)
+        VkPipelineDepthStencilStateCreateInfo depth_info = {};
+        depth_info.sType = VK_STRUCTURE_TYPE_PIPELINE_DEPTH_STENCIL_STATE_CREATE_INFO;
+        depth_info.pNext = nullptr;
+        depth_info.depthTestEnable = VK_FALSE;
+        depth_info.depthWriteEnable = VK_FALSE;
+        depth_info.depthCompareOp = VK_COMPARE_OP_NEVER;
+        depth_info.depthBoundsTestEnable = VK_FALSE;
+        depth_info.stencilTestEnable = VK_FALSE;
+        depth_info.front = {};
+        depth_info.back = {};
+        depth_info.minDepthBounds = 0.0f;
+        depth_info.maxDepthBounds = 1.0f;
+
+        /// Dynamic state info
+        std::vector<VkDynamicState> state = { VK_DYNAMIC_STATE_VIEWPORT, VK_DYNAMIC_STATE_SCISSOR };
+        VkPipelineDynamicStateCreateInfo dynamic_info = {};
+        dynamic_info.sType = VK_STRUCTURE_TYPE_PIPELINE_DYNAMIC_STATE_CREATE_INFO;
+        dynamic_info.pNext = nullptr;
+        dynamic_info.pDynamicStates = state.data();
+        dynamic_info.dynamicStateCount = static_cast<uint32_t>(state.size());
+
+        std::vector<VkPipelineShaderStageCreateInfo> shader_stage_infos = {
+            make_shader_stage_info(VK_SHADER_STAGE_VERTEX_BIT, vert_shader_module),
+            make_shader_stage_info(VK_SHADER_STAGE_FRAGMENT_BIT, frag_shader_module),
+        };
+
+        /// Smoosh it all into the pipeline definition, unused stages like tesselation left as 0 initialized nullptr
+        VkGraphicsPipelineCreateInfo pipeline_info = {};
+        pipeline_info.sType = VK_STRUCTURE_TYPE_GRAPHICS_PIPELINE_CREATE_INFO;
+        pipeline_info.pNext = &rendering_info;
+        pipeline_info.stageCount = static_cast<uint32_t>(shader_stage_infos.size());
+        pipeline_info.pStages = shader_stage_infos.data();
+        pipeline_info.pVertexInputState = &vertex_input_state_info;
+        pipeline_info.pInputAssemblyState = &input_assembly_info;
+        pipeline_info.pViewportState = &viewport_info;
+        pipeline_info.pRasterizationState = &rasterization_info;
+        pipeline_info.pMultisampleState = &multisampling_info;
+        pipeline_info.pColorBlendState = &blend_info;
+        pipeline_info.pDepthStencilState = &depth_info;
+        pipeline_info.pDynamicState = &dynamic_info;
+        pipeline_info.layout = pipeline_layout;
+
+        VkPipeline graphics_pipeline = {};
+        if (vkCreateGraphicsPipelines(device, VK_NULL_HANDLE, 1, &pipeline_info, nullptr, &graphics_pipeline) != VK_SUCCESS) {
+            printf("Unable to create graphics pipeline\n");
+            exit(EXIT_FAILURE);
+        }
+
+        cleanup_procedures.add([device, graphics_pipeline](){
+            vkDestroyPipeline(device, graphics_pipeline, nullptr);
+        });
+
+        vk_types::Pipeline graphics_pipeline_bundle = {};
+        graphics_pipeline_bundle.descriptors = descriptor_set;
+        graphics_pipeline_bundle.handle = graphics_pipeline;
+        graphics_pipeline_bundle.layout = pipeline_layout;
+        graphics_pipeline_bundle.bind_point = VK_PIPELINE_BIND_POINT_GRAPHICS;
+
+        return graphics_pipeline_bundle;
     }
 
     vk_types::Resources init(const std::vector<const char*>& required_device_extensions, const std::vector<const char*>& glfw_extensions, GLFWwindow* window, CleanupProcedures& cleanup_procedures) {
@@ -983,8 +1123,15 @@ namespace vk_init {
 
         // Assemble the compute pipeline
         VkShaderModule compute_shader = init_shader_module(vulkan_device, "../../../src/shaders/gradient.glsl.comp.spv", cleanup_procedures);
-        vk_types::Pipeline compute_pipeline = init_compute_pipeline(vulkan_device, compute_shader, compute_descriptor_layout, compute_descriptor_set, cleanup_procedures);
+        std::vector<VkDescriptorSetLayout> compute_descriptor_set_layouts = { compute_descriptor_layout };
+        VkPipelineLayout compute_pipeline_layout = init_pipeline_layout(vulkan_device, compute_descriptor_set_layouts, cleanup_procedures);
+        vk_types::Pipeline compute_pipeline = init_compute_pipeline(vulkan_device, compute_pipeline_layout, compute_shader, compute_descriptor_set, cleanup_procedures);
 
+        // Assemble the graphics pipeline
+        VkShaderModule vert_shader = init_shader_module(vulkan_device, "../../../src/shaders/colored_triangle.glsl.vert.spv", cleanup_procedures);
+        VkShaderModule frag_shader = init_shader_module(vulkan_device, "../../../src/shaders/colored_triangle.glsl.frag.spv", cleanup_procedures);
+        VkPipelineLayout graphics_pipeline_layout = init_pipeline_layout(vulkan_device, {}, cleanup_procedures);
+        vk_types::Pipeline graphics_pipeline = init_graphics_pipeline(vulkan_device, graphics_pipeline_layout, draw_target.image_format, vert_shader, frag_shader, {}, cleanup_procedures);
         return vk_types::Resources {
             vulkan_instance,
             vulkan_gpu.gpu,
@@ -997,6 +1144,7 @@ namespace vk_init {
             allocator,
             draw_target,
             compute_pipeline,
+            graphics_pipeline,
             DOUBLE_BUFFER
         };
     }

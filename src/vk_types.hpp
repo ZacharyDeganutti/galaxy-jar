@@ -61,6 +61,7 @@ namespace vk_types{
         VmaAllocator allocator;
         AllocatedImage draw_target;
         Pipeline compute_pipeline;
+        Pipeline graphics_pipeline;
         uint8_t buffer_count;
     };
 

@@ -60,21 +60,64 @@ namespace vk_layer {
         }
 
         void draw_background(const VkCommandBuffer cmd, const vk_types::AllocatedImage& background_target, const vk_types::Pipeline& pipeline, const DrawState& state) {
-            // Make a clear value that varies over time
-            /*
-            VkClearColorValue clear_value;
-            float blueness = std::abs(std::sin(static_cast<float>(state.frame_num) / 12000.f));
-            float redness = 1.0f - blueness;
-            clear_value = { { redness, 0.0f, blueness, 1.0f } };
-
-            // Clear the image with our clear value
-            VkImageSubresourceRange color_subresource = vk_image::make_subresource_range(VK_IMAGE_ASPECT_COLOR_BIT);
-            vkCmdClearColorImage(cmd, background_target, VK_IMAGE_LAYOUT_GENERAL, &clear_value, 1, &color_subresource);
-            */
             vkCmdBindPipeline(cmd, pipeline.bind_point, pipeline.handle);
             vkCmdBindDescriptorSets(cmd, pipeline.bind_point, pipeline.layout, 0, 1, &pipeline.descriptors, 0, nullptr);
             vkCmdDispatch(cmd, std::ceil(background_target.image_extent.width / 16.0), std::ceil(background_target.image_extent.height / 16.0), 1);
         }
+
+        void draw_geometry(const VkCommandBuffer cmd, const vk_types::AllocatedImage& draw_target, const vk_types::Pipeline& pipeline, const DrawState& state) {
+            //begin a render pass  connected to our draw image
+            VkRenderingAttachmentInfo color_attachment = {}; // vkinit::attachment_info(_drawImage.imageView, nullptr, VK_IMAGE_LAYOUT_COLOR_ATTACHMENT_OPTIMAL);
+            color_attachment.sType = VK_STRUCTURE_TYPE_RENDERING_ATTACHMENT_INFO;
+            color_attachment.pNext = nullptr;
+            color_attachment.imageLayout = VK_IMAGE_LAYOUT_COLOR_ATTACHMENT_OPTIMAL;
+            color_attachment.imageView = draw_target.image_view;
+            color_attachment.loadOp = VK_ATTACHMENT_LOAD_OP_LOAD;
+            color_attachment.storeOp = VK_ATTACHMENT_STORE_OP_STORE;
+            // Not multisampling so set this off and leave the resolve view and layouts zeroed out
+            color_attachment.resolveMode = VK_RESOLVE_MODE_NONE;
+            // Not using VK_ATTACHMENT_LOAD_OP_CLEAR, so no need to set clear value either
+            
+            VkRenderingInfo render_info = {};
+            render_info.sType = VK_STRUCTURE_TYPE_RENDERING_INFO;
+            render_info.pNext = nullptr;
+            // Don't think any fancy render flags are needed, leave zeroed
+            render_info.viewMask = 0;
+            render_info.layerCount = 1;
+            render_info.pColorAttachments = &color_attachment;
+            render_info.colorAttachmentCount = 1;
+            // Leave depth and stencil attachments nulled out since unused
+            render_info.renderArea.extent = draw_target.image_extent;
+            render_info.renderArea.offset = VkOffset2D{ 0, 0 };
+
+            vkCmdBeginRendering(cmd, &render_info);
+
+            vkCmdBindPipeline(cmd, VK_PIPELINE_BIND_POINT_GRAPHICS, pipeline.handle);
+
+            //set dynamic viewport and scissor
+            VkViewport viewport = {};
+            viewport.x = 0;
+            viewport.y = 0;
+            viewport.width = draw_target.image_extent.width;
+            viewport.height = draw_target.image_extent.height;
+            viewport.minDepth = 0.0f;
+            viewport.maxDepth = 1.0f;
+
+            vkCmdSetViewport(cmd, 0, 1, &viewport);
+
+            VkRect2D scissor = {};
+            scissor.offset.x = 0;
+            scissor.offset.y = 0;
+            scissor.extent = draw_target.image_extent;
+
+            vkCmdSetScissor(cmd, 0, 1, &scissor);
+
+            //launch a draw command to draw 3 vertices
+            vkCmdDraw(cmd, 3, 1, 0, 0);
+
+            vkCmdEndRendering(cmd);
+        }
+
     }
 
     DrawState draw(const vk_types::Resources& vk_res, const DrawState& state) {
@@ -139,8 +182,12 @@ namespace vk_layer {
 
         draw_background(cmd, vk_res.draw_target, vk_res.compute_pipeline, state);
 
+        vk_image::transition_image(cmd, vk_res.draw_target.image, VK_IMAGE_LAYOUT_GENERAL, VK_IMAGE_LAYOUT_COLOR_ATTACHMENT_OPTIMAL);
+
+        draw_geometry(cmd, vk_res.draw_target, vk_res.graphics_pipeline, state);
+
         // Transfer from the draw target to the swapchain
-        vk_image::transition_image(cmd, vk_res.draw_target.image, VK_IMAGE_LAYOUT_GENERAL, VK_IMAGE_LAYOUT_TRANSFER_SRC_OPTIMAL);
+        vk_image::transition_image(cmd, vk_res.draw_target.image, VK_IMAGE_LAYOUT_COLOR_ATTACHMENT_OPTIMAL, VK_IMAGE_LAYOUT_TRANSFER_SRC_OPTIMAL);
         vk_image::transition_image(cmd, vk_res.swapchain.images[swapchain_image_index], VK_IMAGE_LAYOUT_UNDEFINED, VK_IMAGE_LAYOUT_TRANSFER_DST_OPTIMAL);
         vk_image::blit_image_to_image(cmd, vk_res.draw_target.image, vk_res.swapchain.images[swapchain_image_index], vk_res.draw_target.image_extent, vk_res.swapchain.extent);
 
