@@ -6,6 +6,7 @@
 #include "vk_types.hpp"
 #include "vk_init.hpp"
 #include "vk_layer.hpp"
+#include "geometry.hpp"
 
 int main() {
     glfwInit();
@@ -36,6 +37,8 @@ int main() {
         .buf_num = 0,
         .frame_num = 0
     };
+    // Load other resources
+    geometry::Model dummy_model = geometry::load_model("sponza.obj", "../../../assets/sponza/");
     while(!glfwWindowShouldClose(window)) {
         glfwPollEvents();
         draw_state = vk_layer::draw(vulkan_resources, draw_state);

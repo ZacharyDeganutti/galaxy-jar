@@ -15,4 +15,14 @@ if [ ! -f external/VulkanMemoryAllocator-3.1.0/include/vk_mem_alloc.h ]; then
     exit 1;
 fi
 
+if [ ! -f external/tinyobjloader/tiny_obj_loader.h ]; then
+    echo "tinyobjloader not found, run 'make download'";
+    exit 1;
+fi
+
+if [ ! -f external/glm/glm.hpp ]; then
+    echo "GLM not found, run 'make download'";
+    exit 1;
+fi
+
 exit 0;
