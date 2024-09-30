@@ -120,7 +120,7 @@ namespace vk_layer {
 
     }
 
-    DrawState draw(const vk_types::Resources& vk_res, const DrawState& state) {
+    DrawState draw(const vk_types::Context& vk_res, const DrawState& state) {
         // Wait for previous frame to finish drawing (if applicable). Timeout 1s
         if (state.not_first_frame) {
             uint32_t prior_frame = (state.buf_num + (vk_res.buffer_count - 1)) % vk_res.buffer_count;
@@ -239,7 +239,7 @@ namespace vk_layer {
         };
     }
 
-    void cleanup(vk_types::Resources& resources, vk_init::CleanupProcedures& cleanup_procedures) {
+    void cleanup(vk_types::Context& resources, vk_types::CleanupProcedures& cleanup_procedures) {
         vkDeviceWaitIdle(resources.device);
         cleanup_procedures.cleanup();
     }

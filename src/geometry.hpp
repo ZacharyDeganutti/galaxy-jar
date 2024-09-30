@@ -1,6 +1,9 @@
+#ifndef GEOMETRY_H_
+#define GEOMETRY_H_
 #include <vector>
 #include <string>
 #include "glmvk.hpp"
+#include "vk_types.hpp"
 
 namespace geometry {
     struct TexturedVertex {
@@ -27,7 +30,12 @@ namespace geometry {
         std::vector<Material> materials;
     };
 
+    struct GpuModel {
+        std::vector<vk_types::GpuMeshBuffers> vertex_attributes;
+    };
+
     // Accepts a file name, and a path to search for the file and corresponding material as arguments
     // May throw an exception on failure
     Model load_model(std::string file_name, std::string base_path);
 }
+#endif

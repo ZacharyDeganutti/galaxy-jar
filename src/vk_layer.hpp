@@ -19,8 +19,8 @@ namespace vk_layer
         uint64_t frame_num;
     };
 
-    DrawState draw(const vk_types::Resources& res, const DrawState& state);
-    void cleanup(vk_types::Resources& resources, vk_init::CleanupProcedures& cleanup_procedures);
+    DrawState draw(const vk_types::Context& res, const DrawState& state);
+    void cleanup(vk_types::Context& resources, vk_types::CleanupProcedures& cleanup_procedures);
 } // namespace vk_layer
 
 #endif // VK_LAYER_H_

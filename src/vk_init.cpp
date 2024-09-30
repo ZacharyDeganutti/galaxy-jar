@@ -53,24 +53,24 @@ namespace vk_init {
     QueueFamilyCollection filter(const QueueFamilyCollection& families, const std::function<bool(size_t)> criteria);
     QueueFamilyCollection filter_for_feature_compatability(const QueueFamilyCollection& families, const VkQueueFlagBits queue_feature_flags);
     QueueFamilyCollection filter_for_presentation_compatibility(const VkPhysicalDevice gpu, const VkSurfaceKHR surface, const QueueFamilyCollection& families);
-    VkInstance init_instance(const int extension_count, const char* const* extension_names, CleanupProcedures& cleanup_procedures);
+    VkInstance init_instance(const int extension_count, const char* const* extension_names, vk_types::CleanupProcedures& cleanup_procedures);
     GpuAndQueueInfo init_physical_device(const VkInstance instance, const std::vector<const char*>& required_extensions, const VkSurfaceKHR surface);
-    VkDevice init_logical_device(const GpuAndQueueInfo& gpu_info, const std::vector<const char*>& required_extensions, CleanupProcedures& cleanup_procedures);
-    VkSurfaceKHR init_surface(const VkInstance instance, GLFWwindow* window, CleanupProcedures& cleanup_procedures);
+    VkDevice init_logical_device(const GpuAndQueueInfo& gpu_info, const std::vector<const char*>& required_extensions, vk_types::CleanupProcedures& cleanup_procedures);
+    VkSurfaceKHR init_surface(const VkInstance instance, GLFWwindow* window, vk_types::CleanupProcedures& cleanup_procedures);
     VkSurfaceFormatKHR choose_swapchain_surface_format(const std::vector<VkSurfaceFormatKHR>& format_list);
     VkPresentModeKHR choose_swapchain_present_mode(const std::vector<VkPresentModeKHR>& mode_list);
     VkExtent2D choose_swapchain_extent(const VkSurfaceCapabilitiesKHR& capabilities, const uint32_t width, const uint32_t height);
-    VkImageView init_image_view(const VkDevice device, const VkImage image, const VkFormat format, CleanupProcedures& cleanup_procedures);
-    vk_types::AllocatedImage init_allocated_image(const VkDevice device, const VmaAllocator allocator, const VkFormat format, const VkImageUsageFlags usage_flags, const VkExtent2D extent, CleanupProcedures& cleanup_procedures);
-    vk_types::Swapchain init_swapchain(const VkDevice device, const GpuAndQueueInfo& gpu_info, const VkSurfaceKHR surface, const uint32_t width, const uint32_t height, CleanupProcedures& cleanup_procedures);
-    std::vector<vk_types::Command> init_command(const VkDevice device, const GpuAndQueueInfo& gpu, const uint8_t buffer_count, CleanupProcedures& cleanup_procedures);
-    std::vector<vk_types::Synchronization> init_synchronization(const VkDevice device, const uint8_t buffer_count, CleanupProcedures& cleanup_procedures);
-    VkDescriptorSet init_image_descriptors(const VkDevice device, const VkImageView image_view, const VkDescriptorSetLayout descriptor_layout, DescriptorAllocator& descriptor_allocator, CleanupProcedures& cleanup_procedures);
-    VmaAllocator init_allocator(const VkInstance instance, const VkDevice device, const GpuAndQueueInfo& gpu, CleanupProcedures& cleanup_procedures);
-    VkShaderModule init_shader_module(const VkDevice device, const char *file_path, CleanupProcedures& cleanup_procedures);
-    VkPipelineLayout init_pipeline_layout(const VkDevice device, const std::vector<VkDescriptorSetLayout>& descriptor_set_layouts, CleanupProcedures& cleanup_procedures);
-    vk_types::Pipeline init_compute_pipeline(const VkDevice device, const VkPipelineLayout compute_pipeline_layout, const VkShaderModule shader_module, const VkDescriptorSet descriptor_set, CleanupProcedures& cleanup_procedures);
-    vk_types::Pipeline init_graphics_pipeline(const VkDevice device, const VkPipelineLayout pipeline_layout, const VkFormat& target_format, const VkShaderModule vert_shader_module, const VkShaderModule frag_shader_module, const VkDescriptorSet descriptor_set, CleanupProcedures& cleanup_procedures);
+    VkImageView init_image_view(const VkDevice device, const VkImage image, const VkFormat format, vk_types::CleanupProcedures& cleanup_procedures);
+    vk_types::AllocatedImage init_allocated_image(const VkDevice device, const VmaAllocator allocator, const VkFormat format, const VkImageUsageFlags usage_flags, const VkExtent2D extent, vk_types::CleanupProcedures& cleanup_procedures);
+    vk_types::Swapchain init_swapchain(const VkDevice device, const GpuAndQueueInfo& gpu_info, const VkSurfaceKHR surface, const uint32_t width, const uint32_t height, vk_types::CleanupProcedures& cleanup_procedures);
+    std::vector<vk_types::Command> init_command(const VkDevice device, const GpuAndQueueInfo& gpu, const uint8_t buffer_count, vk_types::CleanupProcedures& cleanup_procedures);
+    std::vector<vk_types::Synchronization> init_synchronization(const VkDevice device, const uint8_t buffer_count, vk_types::CleanupProcedures& cleanup_procedures);
+    VkDescriptorSet init_image_descriptors(const VkDevice device, const VkImageView image_view, const VkDescriptorSetLayout descriptor_layout, DescriptorAllocator& descriptor_allocator, vk_types::CleanupProcedures& cleanup_procedures);
+    VmaAllocator init_allocator(const VkInstance instance, const VkDevice device, const GpuAndQueueInfo& gpu, vk_types::CleanupProcedures& cleanup_procedures);
+    VkShaderModule init_shader_module(const VkDevice device, const char *file_path, vk_types::CleanupProcedures& cleanup_procedures);
+    VkPipelineLayout init_pipeline_layout(const VkDevice device, const std::vector<VkDescriptorSetLayout>& descriptor_set_layouts, vk_types::CleanupProcedures& cleanup_procedures);
+    vk_types::Pipeline init_compute_pipeline(const VkDevice device, const VkPipelineLayout compute_pipeline_layout, const VkShaderModule shader_module, const VkDescriptorSet descriptor_set, vk_types::CleanupProcedures& cleanup_procedures);
+    vk_types::Pipeline init_graphics_pipeline(const VkDevice device, const VkPipelineLayout pipeline_layout, const VkFormat& target_format, const VkShaderModule vert_shader_module, const VkShaderModule frag_shader_module, const VkDescriptorSet descriptor_set, vk_types::CleanupProcedures& cleanup_procedures);
 }
 
 namespace vk_init {
@@ -119,7 +119,7 @@ namespace vk_init {
         return ds;
     }
 
-    VkShaderModule init_shader_module(const VkDevice device, const char *file_path, CleanupProcedures& cleanup_procedures) {
+    VkShaderModule init_shader_module(const VkDevice device, const char *file_path, vk_types::CleanupProcedures& cleanup_procedures) {
         // open the file. With cursor at the end
         std::ifstream file(file_path, std::ios::ate | std::ios::binary);
 
@@ -279,7 +279,7 @@ namespace vk_init {
         });
     }
 
-    VkInstance init_instance(const int extension_count, const char* const* extension_names, CleanupProcedures& cleanup_procedures) {
+    VkInstance init_instance(const int extension_count, const char* const* extension_names, vk_types::CleanupProcedures& cleanup_procedures) {
         // Create our instance
         VkApplicationInfo app_info{};
         app_info.sType = VK_STRUCTURE_TYPE_APPLICATION_INFO;
@@ -427,7 +427,7 @@ namespace vk_init {
         };
     }
 
-    VkDevice init_logical_device(const GpuAndQueueInfo& gpu_info, const std::vector<const char*>& required_extensions, CleanupProcedures& cleanup_procedures) {
+    VkDevice init_logical_device(const GpuAndQueueInfo& gpu_info, const std::vector<const char*>& required_extensions, vk_types::CleanupProcedures& cleanup_procedures) {
         if (gpu_info.gpu == nullptr) {
             printf("No valid VkPhysicalDevice.\n");
             exit(EXIT_FAILURE);
@@ -504,7 +504,7 @@ namespace vk_init {
         return device;
     }
 
-    VkSurfaceKHR init_surface(const VkInstance instance, GLFWwindow* window, CleanupProcedures& cleanup_procedures) {
+    VkSurfaceKHR init_surface(const VkInstance instance, GLFWwindow* window, vk_types::CleanupProcedures& cleanup_procedures) {
         if (instance == nullptr) {
             printf("No valid VkInstance.\n");
             exit(EXIT_FAILURE);
@@ -564,7 +564,7 @@ namespace vk_init {
         }
     }
 
-    VkImageView init_image_view(const VkDevice device, const VkImage image, const VkFormat format, CleanupProcedures& cleanup_procedures) {
+    VkImageView init_image_view(const VkDevice device, const VkImage image, const VkFormat format, vk_types::CleanupProcedures& cleanup_procedures) {
         VkImageView image_view = {};
 
         VkImageViewCreateInfo image_view_create_info{};
@@ -594,7 +594,7 @@ namespace vk_init {
         return image_view;
     }
     
-    vk_types::AllocatedImage init_allocated_image(const VkDevice device, const VmaAllocator allocator, const VkFormat format, const VkImageUsageFlags usage_flags, const VkExtent2D extent, CleanupProcedures& cleanup_procedures) {
+    vk_types::AllocatedImage init_allocated_image(const VkDevice device, const VmaAllocator allocator, const VkFormat format, const VkImageUsageFlags usage_flags, const VkExtent2D extent, vk_types::CleanupProcedures& cleanup_procedures) {
         // Setup image specification
         VkImageCreateInfo image_info = {};
         image_info.sType = VK_STRUCTURE_TYPE_IMAGE_CREATE_INFO;
@@ -639,7 +639,7 @@ namespace vk_init {
         return allocated_image;
     }
 
-    vk_types::Swapchain init_swapchain(const VkDevice device, const GpuAndQueueInfo& gpu_info, const VkSurfaceKHR surface, const uint32_t width, const uint32_t height, CleanupProcedures& cleanup_procedures) {
+    vk_types::Swapchain init_swapchain(const VkDevice device, const GpuAndQueueInfo& gpu_info, const VkSurfaceKHR surface, const uint32_t width, const uint32_t height, vk_types::CleanupProcedures& cleanup_procedures) {
         SwapchainSupportDetails swapchain_support = query_swapchain_support(gpu_info.gpu, surface);
 
         VkSurfaceFormatKHR surface_format = choose_swapchain_surface_format(swapchain_support.formats);
@@ -720,7 +720,7 @@ namespace vk_init {
         return swapchain;
     }
 
-    std::vector<vk_types::Command> init_command(const VkDevice device, const GpuAndQueueInfo& gpu, const uint8_t buffer_count, CleanupProcedures& cleanup_procedures) {
+    std::vector<vk_types::Command> init_command(const VkDevice device, const GpuAndQueueInfo& gpu, const uint8_t buffer_count, vk_types::CleanupProcedures& cleanup_procedures) {
         std::vector<vk_types::Command> per_frame_command_data(buffer_count, vk_types::Command{});
         VkCommandPoolCreateInfo command_pool_info = {};
         command_pool_info.sType = VK_STRUCTURE_TYPE_COMMAND_POOL_CREATE_INFO;
@@ -731,7 +731,7 @@ namespace vk_init {
         for (size_t i = 0; i < buffer_count; ++i) {
             VkResult command_pool_result = vkCreateCommandPool(device, &command_pool_info, nullptr, &(per_frame_command_data[i].pool));
             if (command_pool_result != VK_SUCCESS) {
-                printf("Unable to create command pool for frame %d\n", i);
+                printf("Unable to create command pool for frame %zu\n", i);
                 exit(EXIT_FAILURE);
             }
             VkCommandBufferAllocateInfo command_buffer_alloc_info = {};
@@ -743,7 +743,7 @@ namespace vk_init {
 
             VkResult command_buffer_result = vkAllocateCommandBuffers(device, &command_buffer_alloc_info, &(per_frame_command_data[i].buffer_primary));
             if (command_buffer_result != VK_SUCCESS) {
-                printf("Unable to create command buffer(s) for frame %d\n", i);
+                printf("Unable to create command buffer(s) for frame %zu\n", i);
                 exit(EXIT_FAILURE);
             }
         }
@@ -756,7 +756,7 @@ namespace vk_init {
         return per_frame_command_data;
     }
 
-    std::vector<vk_types::Synchronization> init_synchronization(const VkDevice device, const uint8_t buffer_count, CleanupProcedures& cleanup_procedures) {
+    std::vector<vk_types::Synchronization> init_synchronization(const VkDevice device, const uint8_t buffer_count, vk_types::CleanupProcedures& cleanup_procedures) {
         std::vector<vk_types::Synchronization> per_frame_synchronization_structures(buffer_count, vk_types::Synchronization{});
         
         VkFenceCreateInfo fence_info = {};
@@ -773,21 +773,21 @@ namespace vk_init {
             VkResult render_fence_result = 
                 vkCreateFence(device, &fence_info, nullptr, &(per_frame_synchronization_structures[i].render_fence));
             if (render_fence_result != VK_SUCCESS) {
-                printf("Unable to create render fence for frame %d\n", i);
+                printf("Unable to create render fence for frame %zu\n", i);
                 exit(EXIT_FAILURE);
             }
 
             VkResult swapchain_semaphore_result =
                 vkCreateSemaphore(device, &semaphore_info, nullptr, &(per_frame_synchronization_structures[i].swapchain_semaphore));
             if (swapchain_semaphore_result != VK_SUCCESS) {
-                printf("Unable to create swapchain semaphore for frame %d\n", i);
+                printf("Unable to create swapchain semaphore for frame %zu\n", i);
                 exit(EXIT_FAILURE);
             }
 
             VkResult render_semaphore_result =
                 vkCreateSemaphore(device, &semaphore_info, nullptr, &(per_frame_synchronization_structures[i].render_semaphore));
             if (swapchain_semaphore_result != VK_SUCCESS) {
-                printf("Unable to create render semaphore for frame %d\n", i);
+                printf("Unable to create render semaphore for frame %zu\n", i);
                 exit(EXIT_FAILURE);
             }
         }
@@ -801,7 +801,7 @@ namespace vk_init {
         return per_frame_synchronization_structures;
     }
 
-    VkDescriptorSetLayout init_descriptor_layout(const VkDevice device, VkShaderStageFlags stage, const std::vector<VkDescriptorType>& ordered_binding_types, CleanupProcedures& cleanup_procedures) {
+    VkDescriptorSetLayout init_descriptor_layout(const VkDevice device, VkShaderStageFlags stage, const std::vector<VkDescriptorType>& ordered_binding_types, vk_types::CleanupProcedures& cleanup_procedures) {
         std::vector<VkDescriptorSetLayoutBinding> bindings(ordered_binding_types.size());
         for (int binding_num = 0; binding_num < ordered_binding_types.size(); ++binding_num) {
             VkDescriptorSetLayoutBinding bind {};
@@ -834,7 +834,7 @@ namespace vk_init {
         return set;
     }
 
-    VkDescriptorSet init_image_descriptors(const VkDevice device, const VkImageView image_view, const VkDescriptorSetLayout descriptor_layout, DescriptorAllocator& descriptor_allocator, CleanupProcedures& cleanup_procedures) {
+    VkDescriptorSet init_image_descriptors(const VkDevice device, const VkImageView image_view, const VkDescriptorSetLayout descriptor_layout, DescriptorAllocator& descriptor_allocator, vk_types::CleanupProcedures& cleanup_procedures) {
 
         //create a descriptor pool that will hold 10 sets with 1 image each
         std::vector<DescriptorAllocator::PoolSizeRatio> sizes =
@@ -870,7 +870,7 @@ namespace vk_init {
         return draw_descriptors;
     }
 
-    VmaAllocator init_allocator(const VkInstance instance, const VkDevice device, const GpuAndQueueInfo& gpu, CleanupProcedures& cleanup_procedures) {
+    VmaAllocator init_allocator(const VkInstance instance, const VkDevice device, const GpuAndQueueInfo& gpu, vk_types::CleanupProcedures& cleanup_procedures) {
         VmaAllocatorCreateInfo allocatorInfo = {};
         allocatorInfo.physicalDevice = gpu.gpu;
         allocatorInfo.device = device;
@@ -886,7 +886,7 @@ namespace vk_init {
         return allocator;
     }
 
-    VkPipelineLayout init_pipeline_layout(const VkDevice device, const std::vector<VkDescriptorSetLayout>& descriptor_set_layouts, CleanupProcedures& cleanup_procedures) {
+    VkPipelineLayout init_pipeline_layout(const VkDevice device, const std::vector<VkDescriptorSetLayout>& descriptor_set_layouts, vk_types::CleanupProcedures& cleanup_procedures) {
         VkPipelineLayoutCreateInfo layout_info{};
         layout_info.sType = VK_STRUCTURE_TYPE_PIPELINE_LAYOUT_CREATE_INFO;
         layout_info.pNext = nullptr;
@@ -918,7 +918,7 @@ namespace vk_init {
         return stage_info;
     }
 
-    vk_types::Pipeline init_compute_pipeline(const VkDevice device, const VkPipelineLayout compute_pipeline_layout, const VkShaderModule shader_module, const VkDescriptorSet descriptor_set, CleanupProcedures& cleanup_procedures) {
+    vk_types::Pipeline init_compute_pipeline(const VkDevice device, const VkPipelineLayout compute_pipeline_layout, const VkShaderModule shader_module, const VkDescriptorSet descriptor_set, vk_types::CleanupProcedures& cleanup_procedures) {
         VkPipelineShaderStageCreateInfo stage_info = make_shader_stage_info(VK_SHADER_STAGE_COMPUTE_BIT, shader_module);
 
         VkComputePipelineCreateInfo compute_pipeline_info{};
@@ -946,7 +946,7 @@ namespace vk_init {
         return pipeline;
     }
 
-    vk_types::Pipeline init_graphics_pipeline(const VkDevice device, const VkPipelineLayout pipeline_layout, const VkFormat& target_format, const VkShaderModule vert_shader_module, const VkShaderModule frag_shader_module, const VkDescriptorSet descriptor_set, CleanupProcedures& cleanup_procedures) {
+    vk_types::Pipeline init_graphics_pipeline(const VkDevice device, const VkPipelineLayout pipeline_layout, const VkFormat& target_format, const VkShaderModule vert_shader_module, const VkShaderModule frag_shader_module, const VkDescriptorSet descriptor_set, vk_types::CleanupProcedures& cleanup_procedures) {
         
         /// Basic viewport setup
         VkPipelineViewportStateCreateInfo viewport_info = {};
@@ -1075,7 +1075,9 @@ namespace vk_init {
         return graphics_pipeline_bundle;
     }
 
-    vk_types::Resources init(const std::vector<const char*>& required_device_extensions, const std::vector<const char*>& glfw_extensions, GLFWwindow* window, CleanupProcedures& cleanup_procedures) {
+    vk_types::Context init(const std::vector<const char*>& required_device_extensions, const std::vector<const char*>& glfw_extensions, GLFWwindow* window) {
+        // Setup tracker for resources that need to be cleaned up
+        vk_types::CleanupProcedures cleanup_procedures{};
         VkInstance vulkan_instance = init_instance(glfw_extensions.size(), glfw_extensions.data(), cleanup_procedures);
         VkSurfaceKHR vulkan_surface = init_surface(vulkan_instance, window, cleanup_procedures);
         GpuAndQueueInfo vulkan_gpu = init_physical_device(vulkan_instance, required_device_extensions, vulkan_surface);
@@ -1132,7 +1134,8 @@ namespace vk_init {
         VkShaderModule frag_shader = init_shader_module(vulkan_device, "../../../src/shaders/colored_triangle.glsl.frag.spv", cleanup_procedures);
         VkPipelineLayout graphics_pipeline_layout = init_pipeline_layout(vulkan_device, {}, cleanup_procedures);
         vk_types::Pipeline graphics_pipeline = init_graphics_pipeline(vulkan_device, graphics_pipeline_layout, draw_target.image_format, vert_shader, frag_shader, {}, cleanup_procedures);
-        return vk_types::Resources {
+        return vk_types::Context {
+            cleanup_procedures,
             vulkan_instance,
             vulkan_gpu.gpu,
             vulkan_device,

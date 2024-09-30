@@ -11,25 +11,7 @@
 
 namespace vk_init {
 
-    struct CleanupProcedures {
-        private:
-        std::deque<std::function<void()>> procedure_stack;
-
-        public:
-        void add(std::function<void()>&& cleanup_procedure) {
-            procedure_stack.push_back(cleanup_procedure);
-        }
-
-        void cleanup() {
-            while (!procedure_stack.empty()) {
-                auto procedure = procedure_stack.back();
-                procedure_stack.pop_back();
-                procedure();
-            }
-        }
-    };
-
-    vk_types::Resources init(const std::vector<const char*>& required_device_extensions, const std::vector<const char*>& glfw_extensions, GLFWwindow* window, CleanupProcedures& cleanup_procedures);
+    vk_types::Context init(const std::vector<const char*>& required_device_extensions, const std::vector<const char*>& glfw_extensions, GLFWwindow* window);
 }
 
 #endif

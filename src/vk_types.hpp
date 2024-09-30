@@ -18,6 +18,42 @@ namespace vk_types{
         VkFormat image_format;
     };
 
+    struct AllocatedBuffer {
+        VkBuffer buffer;
+        VmaAllocation allocation;
+        VmaAllocationInfo info;
+    };
+
+    struct GpuVertexAttribute {
+        AllocatedBuffer index_buffer;
+        AllocatedBuffer vertex_buffer;
+        VkDeviceAddress vertex_buffer_address;
+    };
+
+    struct GpuMeshBuffers {
+        GpuVertexAttribute position_buffers;
+        GpuVertexAttribute normal_buffers;
+        GpuVertexAttribute texture_coordinate_buffers;
+    };
+
+    struct CleanupProcedures {
+        private:
+        std::deque<std::function<void()>> procedure_stack;
+
+        public:
+        void add(std::function<void()>&& cleanup_procedure) {
+            procedure_stack.push_back(cleanup_procedure);
+        }
+
+        void cleanup() {
+            while (!procedure_stack.empty()) {
+                auto procedure = procedure_stack.back();
+                procedure_stack.pop_back();
+                procedure();
+            }
+        }
+    };
+
     struct Swapchain {
         VkSwapchainKHR handle;
         VkFormat format;
@@ -49,7 +85,8 @@ namespace vk_types{
         VkFence render_fence;
     };
 
-    struct Resources {
+    struct Context {
+        CleanupProcedures cleanup_procedures;
         VkInstance instance;
         VkPhysicalDevice gpu;
         VkDevice device;
