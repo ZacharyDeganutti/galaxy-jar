@@ -14,19 +14,21 @@ namespace geometry {
 
     struct Material {
     };
-    
+
     struct Piece {
-        std::vector<uint32_t> position_indices;
-        std::vector<uint32_t> normal_indices;
-        std::vector<uint32_t> texture_coordinate_indices;
+        std::vector<uint32_t> indices;
         int32_t material_index;
     };
 
-    struct Model {
+    struct IndexedVertexData {
         std::vector<glm::vec3> positions;
         std::vector<glm::vec3> normals;
         std::vector<glm::vec2> texture_coordinates;
         std::vector<Piece> pieces;
+    };
+
+    struct Model {
+        IndexedVertexData vertex_attributes;
         std::vector<Material> materials;
     };
 
@@ -36,6 +38,6 @@ namespace geometry {
 
     // Accepts a file name, and a path to search for the file and corresponding material as arguments
     // May throw an exception on failure
-    Model load_model(std::string file_name, std::string base_path);
+    Model load_obj_model(std::string file_name, std::string base_path);
 }
 #endif

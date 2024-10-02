@@ -37,12 +37,12 @@ int main() {
         .frame_num = 0
     };
     // Load other resources
-    geometry::Model dummy_model = geometry::load_model("sponza.obj", "../../../assets/sponza/");
+    geometry::Model dummy_model = geometry::load_obj_model("sponza.obj", "../../../assets/sponza/");
     std::vector<vk_types::GpuMeshBuffers> mesh_resources = vk_buffer::create_mesh_buffers(vulkan_resources, dummy_model);
     
     while(!glfwWindowShouldClose(window)) {
         glfwPollEvents();
-        draw_state = vk_layer::draw(vulkan_resources, draw_state);
+        draw_state = vk_layer::draw(vulkan_resources, mesh_resources, draw_state);
     }
 
     vk_layer::cleanup(vulkan_resources, vulkan_resources.cleanup_procedures);

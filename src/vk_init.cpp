@@ -1,6 +1,8 @@
 #include "vk_init.hpp"
+#include "glmvk.hpp"
 
 #include <algorithm>
+#include <array>
 #include <fstream>
 #include <ios>
 #include <unordered_set>
@@ -756,13 +758,27 @@ namespace vk_init {
         return per_frame_command_data;
     }
 
-    std::vector<vk_types::Synchronization> init_synchronization(const VkDevice device, const uint8_t buffer_count, vk_types::CleanupProcedures& cleanup_procedures) {
-        std::vector<vk_types::Synchronization> per_frame_synchronization_structures(buffer_count, vk_types::Synchronization{});
-        
+    VkFence init_fence(const VkDevice device, vk_types::CleanupProcedures& cleanup_procedures) {
         VkFenceCreateInfo fence_info = {};
         fence_info.sType = VK_STRUCTURE_TYPE_FENCE_CREATE_INFO;
         fence_info.pNext = nullptr;
         fence_info.flags = VK_FENCE_CREATE_SIGNALED_BIT;
+        VkFence fence = {};
+        VkResult render_fence_result = vkCreateFence(device, &fence_info, nullptr, &fence);
+        if (render_fence_result != VK_SUCCESS) {
+            printf("Unable to create fence\n");
+            exit(EXIT_FAILURE);
+        }
+
+        cleanup_procedures.add([device, fence](){
+            vkDestroyFence(device, fence, nullptr);
+        });
+
+        return fence;
+    }
+
+    std::vector<vk_types::Synchronization> init_synchronization(const VkDevice device, const uint8_t buffer_count, vk_types::CleanupProcedures& cleanup_procedures) {
+        std::vector<vk_types::Synchronization> per_frame_synchronization_structures(buffer_count, vk_types::Synchronization{});
 
         VkSemaphoreCreateInfo semaphore_info = {};
         semaphore_info.sType = VK_STRUCTURE_TYPE_SEMAPHORE_CREATE_INFO;
@@ -770,12 +786,7 @@ namespace vk_init {
         semaphore_info.flags = 0;
 
         for (size_t i = 0; i < buffer_count; ++i) {
-            VkResult render_fence_result = 
-                vkCreateFence(device, &fence_info, nullptr, &(per_frame_synchronization_structures[i].render_fence));
-            if (render_fence_result != VK_SUCCESS) {
-                printf("Unable to create render fence for frame %zu\n", i);
-                exit(EXIT_FAILURE);
-            }
+            per_frame_synchronization_structures[i].render_fence = init_fence(device, cleanup_procedures);
 
             VkResult swapchain_semaphore_result =
                 vkCreateSemaphore(device, &semaphore_info, nullptr, &(per_frame_synchronization_structures[i].swapchain_semaphore));
@@ -795,7 +806,6 @@ namespace vk_init {
             for (auto synchronization : per_frame_synchronization_structures) {
                 vkDestroySemaphore(device, synchronization.render_semaphore, nullptr);
                 vkDestroySemaphore(device, synchronization.swapchain_semaphore, nullptr);
-                vkDestroyFence(device, synchronization.render_fence, nullptr);
             }
         });
         return per_frame_synchronization_structures;
@@ -971,9 +981,52 @@ namespace vk_init {
         blend_info.attachmentCount = 1;
         blend_info.pAttachments = &blend_attachment_state;
 
-        /// VertexInputStateCreateInfo unused for now, clear it
+        /// VertexInputStateCreateInfo is to be configured for non-interleaved positions, normals, and texture coordinates.
+        const std::array<VkVertexInputBindingDescription, 3> bindings = {{
+            {
+                0,                          // binding
+                sizeof(glm::vec3),          // stride
+                VK_VERTEX_INPUT_RATE_VERTEX // inputRate
+            },
+            {
+                1,                          // binding
+                sizeof(glm::vec3),          // stride
+                VK_VERTEX_INPUT_RATE_VERTEX // inputRate
+            },
+            {
+                2,
+                sizeof(glm::vec2),
+                VK_VERTEX_INPUT_RATE_VERTEX
+            }
+        }};
+
+        const std::array<VkVertexInputAttributeDescription, 3> attributes {{
+            {
+                0,                          // location
+                bindings[0].binding,        // binding
+                VK_FORMAT_R32G32B32_SFLOAT, // format
+                0                           // offset
+            },
+            {
+                1,                          // location
+                bindings[1].binding,        // binding
+                VK_FORMAT_R32G32B32_SFLOAT, // format
+                0                           // offset
+            },
+            {
+                2,                          // location
+                bindings[2].binding,        // binding
+                VK_FORMAT_R32G32_SFLOAT,    // format
+                0                           // offset
+            }
+        }};
         VkPipelineVertexInputStateCreateInfo vertex_input_state_info = {};
         vertex_input_state_info.sType = VK_STRUCTURE_TYPE_PIPELINE_VERTEX_INPUT_STATE_CREATE_INFO;
+        vertex_input_state_info.pNext = nullptr;
+        vertex_input_state_info.pVertexAttributeDescriptions = attributes.data();
+        vertex_input_state_info.vertexAttributeDescriptionCount = attributes.size();
+        vertex_input_state_info.pVertexBindingDescriptions = bindings.data();
+        vertex_input_state_info.vertexBindingDescriptionCount = bindings.size();
 
         /// Input Assembly configured to draw triangles
         VkPipelineInputAssemblyStateCreateInfo input_assembly_info = {};
@@ -1099,7 +1152,9 @@ namespace vk_init {
         // Double buffering for our command buffers and synchronization structures
         const uint8_t DOUBLE_BUFFER = 2;
         const std::vector<vk_types::Command> command = init_command(vulkan_device, vulkan_gpu, DOUBLE_BUFFER, cleanup_procedures);
+        const vk_types::Command command_immediate = init_command(vulkan_device, vulkan_gpu, 1, cleanup_procedures)[0];
         const std::vector<vk_types::Synchronization> synchronization = init_synchronization(vulkan_device, DOUBLE_BUFFER, cleanup_procedures);
+        const VkFence fence_immediate = init_fence(vulkan_device, cleanup_procedures);
 
         const VmaAllocator allocator = init_allocator(vulkan_instance, vulkan_device, vulkan_gpu, cleanup_procedures);
 
@@ -1143,7 +1198,9 @@ namespace vk_init {
             swapchain,
             queues,
             command,
+            command_immediate,
             synchronization,
+            fence_immediate,
             allocator,
             draw_target,
             compute_pipeline,

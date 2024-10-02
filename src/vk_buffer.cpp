@@ -31,16 +31,60 @@ namespace vk_buffer {
         return new_buffer;
     }
 
+    vk_types::AllocatedBuffer upload_index_buffer(const vk_types::Context& context, const std::vector<uint32_t>& indices, vk_types::CleanupProcedures& cleanup_procedures) {
+        const size_t index_buffer_size = indices.size() * sizeof(uint32_t);
+
+        //create index buffer
+        vk_types::AllocatedBuffer index_buffer = create_buffer(
+            context.allocator,
+            index_buffer_size,
+            VK_BUFFER_USAGE_INDEX_BUFFER_BIT | VK_BUFFER_USAGE_TRANSFER_DST_BIT,
+            VMA_MEMORY_USAGE_GPU_ONLY,
+            cleanup_procedures);
+
+        // Create a temporary staging buffer which can be used to transfer crom CPU memory to GPU memory
+        vk_types::CleanupProcedures staging_buffer_lifetime = {};
+        vk_types::AllocatedBuffer staging = create_buffer(
+            context.allocator,
+            index_buffer_size,
+            VK_BUFFER_USAGE_TRANSFER_SRC_BIT, 
+            VMA_MEMORY_USAGE_CPU_ONLY,
+            staging_buffer_lifetime);
+
+        void* data = nullptr;
+        if (vmaMapMemory(context.allocator, staging.allocation, &data) != VK_SUCCESS) {
+            printf("Unable to map staging buffer during vertex attribute upload\n");
+            exit(EXIT_FAILURE);
+        }
+
+        // copy index buffer
+        memcpy(reinterpret_cast<char*>(data), indices.data(), index_buffer_size);
+
+        vk_layer::immediate_submit(context, [&](VkCommandBuffer cmd) {
+            VkBufferCopy index_copy{ 0 };
+            index_copy.dstOffset = 0;
+            index_copy.srcOffset = 0;
+            index_copy.size = index_buffer_size;
+
+            vkCmdCopyBuffer(cmd, staging.buffer, index_buffer.buffer, 1, &index_copy);
+        });
+        vmaUnmapMemory(context.allocator, staging.allocation);
+        staging_buffer_lifetime.cleanup();
+
+        return index_buffer;
+    }
+
     std::vector<vk_types::GpuMeshBuffers> create_mesh_buffers(vk_types::Context& context, geometry::Model model, vk_types::CleanupProcedures& custom_lifetime) {
         std::vector<vk_types::GpuMeshBuffers> model_meshes;
-        model_meshes.reserve(model.pieces.size());
+        model_meshes.reserve(model.vertex_attributes.pieces.size());
 
-        for (auto& piece : model.pieces) {
-            vk_types::GpuVertexAttribute position_attribute = upload_vertex_attribute<glm::vec3>(context.device, context.allocator, model.positions, piece.position_indices, custom_lifetime);
-            vk_types::GpuVertexAttribute normal_attribute = upload_vertex_attribute<glm::vec3>(context.device, context.allocator, model.normals, piece.normal_indices, custom_lifetime);
-            vk_types::GpuVertexAttribute texture_coordinate_attribute = upload_vertex_attribute<glm::vec2>(context.device, context.allocator, model.texture_coordinates, piece.texture_coordinate_indices, custom_lifetime);
+        for (auto& piece : model.vertex_attributes.pieces) {
+            vk_types::AllocatedBuffer index_buffer = upload_index_buffer(context, piece.indices, custom_lifetime);
+            vk_types::GpuVertexAttribute position_attribute = upload_vertex_attribute<glm::vec3>(context, model.vertex_attributes.positions, piece.indices, custom_lifetime);
+            vk_types::GpuVertexAttribute normal_attribute = upload_vertex_attribute<glm::vec3>(context, model.vertex_attributes.normals, piece.indices, custom_lifetime);
+            vk_types::GpuVertexAttribute texture_coordinate_attribute = upload_vertex_attribute<glm::vec2>(context, model.vertex_attributes.texture_coordinates, piece.indices, custom_lifetime);
 
-            model_meshes.push_back({position_attribute, normal_attribute, texture_coordinate_attribute});
+            model_meshes.push_back({index_buffer, position_attribute, normal_attribute, texture_coordinate_attribute});
         }
         
         return model_meshes;

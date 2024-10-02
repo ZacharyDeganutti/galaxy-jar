@@ -1,7 +1,10 @@
 #include "vk_image.hpp"
 #include "vk_init.hpp"
 #include "vk_layer.hpp"
+#include "vk_types.hpp"
+
 #include <GLFW/glfw3.h>
+#include <array>
 #include <vulkan/vk_enum_string_helper.h>
 #include <vector>
 #include <functional>
@@ -10,15 +13,20 @@
 #include <set>
 #include <iterator>
 #include <algorithm>
-
-#pragma clang diagnostic push 
-#pragma clang diagnostic ignored "-Weverything"
-#define VMA_IMPLEMENTATION
 #include "vk_mem_alloc.h"
-#pragma clang diagnostic pop
+
+
+// Forward declarations and such
+namespace vk_layer {
+    namespace {
+        VkCommandBufferSubmitInfo make_command_buffer_submit_info(const VkCommandBuffer cmd);
+        VkSubmitInfo2 make_submit_info(const VkCommandBufferSubmitInfo& cmd, const VkSemaphoreSubmitInfo& signal_semaphore_info, const VkSemaphoreSubmitInfo& wait_semaphore_info);
+    }
+}
 
 namespace vk_layer {
     namespace {
+
         VkSemaphoreSubmitInfo make_semaphore_submit_info(const VkPipelineStageFlags2 stage_mask, const VkSemaphore semaphore) {
             VkSemaphoreSubmitInfo semaphore_submit_info{};
             semaphore_submit_info.sType = VK_STRUCTURE_TYPE_SEMAPHORE_SUBMIT_INFO;
@@ -42,16 +50,21 @@ namespace vk_layer {
             return command_buffer_submit_info;
         }
 
+        // Makes submit info struct. Passing in zeroed out semaphore submit info will cause those to be ignored
         VkSubmitInfo2 make_submit_info(const VkCommandBufferSubmitInfo& cmd, const VkSemaphoreSubmitInfo& signal_semaphore_info, const VkSemaphoreSubmitInfo& wait_semaphore_info) {
             VkSubmitInfo2 submit_info = {};
             submit_info.sType = VK_STRUCTURE_TYPE_SUBMIT_INFO_2;
             submit_info.pNext = nullptr;
 
-            submit_info.waitSemaphoreInfoCount = 1;
-            submit_info.pWaitSemaphoreInfos = &wait_semaphore_info;
+            if (wait_semaphore_info.sType != 0) {
+                submit_info.waitSemaphoreInfoCount = 1;
+                submit_info.pWaitSemaphoreInfos = &wait_semaphore_info;
+            }
 
-            submit_info.signalSemaphoreInfoCount = 1;
-            submit_info.pSignalSemaphoreInfos = &signal_semaphore_info;
+            if (signal_semaphore_info.sType != 0) {
+                submit_info.signalSemaphoreInfoCount = 1;
+                submit_info.pSignalSemaphoreInfos = &signal_semaphore_info;
+            }
 
             submit_info.commandBufferInfoCount = 1;
             submit_info.pCommandBufferInfos = &cmd;
@@ -65,7 +78,7 @@ namespace vk_layer {
             vkCmdDispatch(cmd, std::ceil(background_target.image_extent.width / 16.0), std::ceil(background_target.image_extent.height / 16.0), 1);
         }
 
-        void draw_geometry(const VkCommandBuffer cmd, const vk_types::AllocatedImage& draw_target, const vk_types::Pipeline& pipeline, const DrawState& state) {
+        void draw_geometry(const VkCommandBuffer cmd, const vk_types::AllocatedImage& draw_target, const vk_types::Pipeline& pipeline, const std::vector<vk_types::GpuMeshBuffers>& buffers, const DrawState& state) {
             //begin a render pass  connected to our draw image
             VkRenderingAttachmentInfo color_attachment = {}; // vkinit::attachment_info(_drawImage.imageView, nullptr, VK_IMAGE_LAYOUT_COLOR_ATTACHMENT_OPTIMAL);
             color_attachment.sType = VK_STRUCTURE_TYPE_RENDERING_ATTACHMENT_INFO;
@@ -113,14 +126,67 @@ namespace vk_layer {
             vkCmdSetScissor(cmd, 0, 1, &scissor);
 
             //launch a draw command to draw 3 vertices
-            vkCmdDraw(cmd, 3, 1, 0, 0);
+            //vkCmdDraw(cmd, 3, 1, 0, 0);
+            for (auto& buffer_group: buffers) {
+                std::array<VkBuffer, 3> buffer_handles {{
+                    buffer_group.position_buffers.vertex_buffer.buffer,
+                    buffer_group.normal_buffers.vertex_buffer.buffer,
+                    buffer_group.texture_coordinate_buffers.vertex_buffer.buffer
+                }};
+                // vkCmdBindVertexBuffers(cmd, 0, buffer_handles.size(), buffer_handles.data(),
+                // vkCmdDrawIndexed(cmd, buffer_group.position_buffers.index_buffer.info.
+            }
 
             vkCmdEndRendering(cmd);
         }
 
     }
 
-    DrawState draw(const vk_types::Context& vk_res, const DrawState& state) {
+    void immediate_submit(const vk_types::Context& res, std::function<void(VkCommandBuffer cmd)>&& function) {
+        if(vkResetFences(res.device, 1, &res.fence_immediate) != VK_SUCCESS) {
+            printf("Failed to reset fence during immediate submission\n");
+            exit(EXIT_FAILURE);
+        }
+        if(vkResetCommandBuffer(res.command_immediate.buffer_primary, 0) != VK_SUCCESS) {
+            printf("Failed to reset command buffer during immediate submission\n");
+            exit(EXIT_FAILURE);
+        }
+
+        VkCommandBuffer cmd = res.command_immediate.buffer_primary;
+
+        VkCommandBufferBeginInfo cmd_begin_info = {};
+        cmd_begin_info.sType = VK_STRUCTURE_TYPE_COMMAND_BUFFER_BEGIN_INFO;
+        cmd_begin_info.pNext = nullptr;
+        cmd_begin_info.pInheritanceInfo = nullptr;
+        cmd_begin_info.flags = VK_COMMAND_BUFFER_USAGE_ONE_TIME_SUBMIT_BIT; // Command buffer will be used exactly once
+
+        if(vkBeginCommandBuffer(cmd, &cmd_begin_info) != VK_SUCCESS) {
+            printf("Failed to begin command buffer during immediate submission\n");
+            exit(EXIT_FAILURE);
+        }
+
+        function(cmd);
+
+        if(vkEndCommandBuffer(cmd) != VK_SUCCESS) {
+            printf("Failed to end command buffer during immediate submission\n");
+            exit(EXIT_FAILURE);
+        }
+
+        VkCommandBufferSubmitInfo cmd_info = make_command_buffer_submit_info(cmd);
+        VkSubmitInfo2 submit = make_submit_info(cmd_info, {}, {});
+
+        if(vkQueueSubmit2(res.queues.graphics, 1, &submit, res.fence_immediate) != VK_SUCCESS) {
+            printf("Failed to submit command buffer during immediate submission\n");
+            exit(EXIT_FAILURE);
+        }
+
+        if(vkWaitForFences(res.device, 1, &res.fence_immediate, true, 9999999999) != VK_SUCCESS) {
+            printf("Failed to wait on fence during immediate submission\n");
+            exit(EXIT_FAILURE);
+        }
+    }
+
+    DrawState draw(const vk_types::Context& vk_res, const std::vector<vk_types::GpuMeshBuffers>& buffers, const DrawState& state) {
         // Wait for previous frame to finish drawing (if applicable). Timeout 1s
         if (state.not_first_frame) {
             uint32_t prior_frame = (state.buf_num + (vk_res.buffer_count - 1)) % vk_res.buffer_count;
@@ -184,7 +250,7 @@ namespace vk_layer {
 
         vk_image::transition_image(cmd, vk_res.draw_target.image, VK_IMAGE_LAYOUT_GENERAL, VK_IMAGE_LAYOUT_COLOR_ATTACHMENT_OPTIMAL);
 
-        draw_geometry(cmd, vk_res.draw_target, vk_res.graphics_pipeline, state);
+        draw_geometry(cmd, vk_res.draw_target, vk_res.graphics_pipeline, buffers, state);
 
         // Transfer from the draw target to the swapchain
         vk_image::transition_image(cmd, vk_res.draw_target.image, VK_IMAGE_LAYOUT_COLOR_ATTACHMENT_OPTIMAL, VK_IMAGE_LAYOUT_TRANSFER_SRC_OPTIMAL);

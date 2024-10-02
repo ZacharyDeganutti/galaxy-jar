@@ -25,12 +25,12 @@ namespace vk_types{
     };
 
     struct GpuVertexAttribute {
-        AllocatedBuffer index_buffer;
         AllocatedBuffer vertex_buffer;
         VkDeviceAddress vertex_buffer_address;
     };
 
     struct GpuMeshBuffers {
+        AllocatedBuffer index_buffer;
         GpuVertexAttribute position_buffers;
         GpuVertexAttribute normal_buffers;
         GpuVertexAttribute texture_coordinate_buffers;
@@ -94,7 +94,9 @@ namespace vk_types{
         Swapchain swapchain;
         Queues queues;
         std::vector<Command> command;
+        Command command_immediate;
         std::vector<Synchronization> synchronization;
+        VkFence fence_immediate;
         VmaAllocator allocator;
         AllocatedImage draw_target;
         Pipeline compute_pipeline;

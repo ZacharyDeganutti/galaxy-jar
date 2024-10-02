@@ -19,7 +19,8 @@ namespace vk_layer
         uint64_t frame_num;
     };
 
-    DrawState draw(const vk_types::Context& res, const DrawState& state);
+    void immediate_submit(const vk_types::Context& res, std::function<void(VkCommandBuffer cmd)>&& function);
+    DrawState draw(const vk_types::Context& res, const std::vector<vk_types::GpuMeshBuffers>& buffers, const DrawState& state);
     void cleanup(vk_types::Context& resources, vk_types::CleanupProcedures& cleanup_procedures);
 } // namespace vk_layer
 
