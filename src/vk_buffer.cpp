@@ -84,7 +84,7 @@ namespace vk_buffer {
             vk_types::GpuVertexAttribute normal_attribute = upload_vertex_attribute<glm::vec3>(context, model.vertex_attributes.normals, piece.indices, custom_lifetime);
             vk_types::GpuVertexAttribute texture_coordinate_attribute = upload_vertex_attribute<glm::vec2>(context, model.vertex_attributes.texture_coordinates, piece.indices, custom_lifetime);
 
-            model_meshes.push_back({index_buffer, position_attribute, normal_attribute, texture_coordinate_attribute});
+            model_meshes.push_back({index_buffer, position_attribute, normal_attribute, texture_coordinate_attribute, static_cast<uint32_t>(piece.indices.size())});
         }
         
         return model_meshes;

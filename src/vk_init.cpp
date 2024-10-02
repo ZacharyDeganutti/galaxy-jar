@@ -1044,7 +1044,7 @@ namespace vk_init {
         rasterization_info.polygonMode = VK_POLYGON_MODE_FILL;
         rasterization_info.lineWidth = 1.0f;
         // Culling and winding order
-        rasterization_info.cullMode = VK_CULL_MODE_BACK_BIT;
+        rasterization_info.cullMode = VK_CULL_MODE_NONE;
         rasterization_info.frontFace = VK_FRONT_FACE_CLOCKWISE;
 
         /// Multisampling configuration (AA, etc)

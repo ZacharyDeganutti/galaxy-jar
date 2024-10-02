@@ -128,13 +128,15 @@ namespace vk_layer {
             //launch a draw command to draw 3 vertices
             //vkCmdDraw(cmd, 3, 1, 0, 0);
             for (auto& buffer_group: buffers) {
+                vkCmdBindIndexBuffer(cmd, buffer_group.index_buffer.buffer, 0, VK_INDEX_TYPE_UINT32);
                 std::array<VkBuffer, 3> buffer_handles {{
-                    buffer_group.position_buffers.vertex_buffer.buffer,
-                    buffer_group.normal_buffers.vertex_buffer.buffer,
-                    buffer_group.texture_coordinate_buffers.vertex_buffer.buffer
+                    buffer_group.position_buffer.vertex_buffer.buffer,
+                    buffer_group.normal_buffer.vertex_buffer.buffer,
+                    buffer_group.texture_coordinate_buffer.vertex_buffer.buffer
                 }};
-                // vkCmdBindVertexBuffers(cmd, 0, buffer_handles.size(), buffer_handles.data(),
-                // vkCmdDrawIndexed(cmd, buffer_group.position_buffers.index_buffer.info.
+                std::array<VkDeviceSize, 3> offsets {{0,0,0}};
+                vkCmdBindVertexBuffers(cmd, 0, buffer_handles.size(), buffer_handles.data(), offsets.data());
+                vkCmdDrawIndexed(cmd, buffer_group.index_count, 1, 0, 0, 0);
             }
 
             vkCmdEndRendering(cmd);
@@ -276,8 +278,8 @@ namespace vk_layer {
         VkSubmitInfo2 submit_info = make_submit_info(cmd_submit_info, signal_semaphore_info, wait_semaphore_info);
 
         // Fire the command buffer off to the queue
-        if ((vkQueueSubmit2(vk_res.queues.graphics, 1, &submit_info, vk_res.synchronization[state.buf_num].render_fence)) != VK_SUCCESS) {
-            printf("Unable to submit command buffer\n");
+        if (auto res = (vkQueueSubmit2(vk_res.queues.graphics, 1, &submit_info, vk_res.synchronization[state.buf_num].render_fence)) != VK_SUCCESS) {
+            printf("Unable to submit command buffer, result %d\n", res);
             exit(EXIT_FAILURE);
         }
 

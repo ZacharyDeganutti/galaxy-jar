@@ -31,9 +31,10 @@ namespace vk_types{
 
     struct GpuMeshBuffers {
         AllocatedBuffer index_buffer;
-        GpuVertexAttribute position_buffers;
-        GpuVertexAttribute normal_buffers;
-        GpuVertexAttribute texture_coordinate_buffers;
+        GpuVertexAttribute position_buffer;
+        GpuVertexAttribute normal_buffer;
+        GpuVertexAttribute texture_coordinate_buffer;
+        uint32_t index_count;
     };
 
     struct CleanupProcedures {

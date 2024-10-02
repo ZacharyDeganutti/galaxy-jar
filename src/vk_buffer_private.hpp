@@ -20,7 +20,7 @@ namespace vk_buffer {
         new_attribute.vertex_buffer = create_buffer(
             context.allocator,
             vertex_buffer_size, 
-            VK_BUFFER_USAGE_STORAGE_BUFFER_BIT | VK_BUFFER_USAGE_TRANSFER_DST_BIT | VK_BUFFER_USAGE_SHADER_DEVICE_ADDRESS_BIT, 
+            VK_BUFFER_USAGE_VERTEX_BUFFER_BIT | VK_BUFFER_USAGE_TRANSFER_DST_BIT | VK_BUFFER_USAGE_SHADER_DEVICE_ADDRESS_BIT, 
             VMA_MEMORY_USAGE_GPU_ONLY,
             cleanup_procedures);
 
