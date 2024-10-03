@@ -21,6 +21,7 @@ namespace vk_layer {
     namespace {
         VkCommandBufferSubmitInfo make_command_buffer_submit_info(const VkCommandBuffer cmd);
         VkSubmitInfo2 make_submit_info(const VkCommandBufferSubmitInfo& cmd, const VkSemaphoreSubmitInfo& signal_semaphore_info, const VkSemaphoreSubmitInfo& wait_semaphore_info);
+        void clear_attachments(const VkCommandBuffer cmd, std::span<VkRenderingAttachmentInfo> attachments, std::span<VkExtent2D> extents);
     }
 }
 
@@ -71,6 +72,47 @@ namespace vk_layer {
 
             return submit_info;
         }
+        
+        // Clears out attachments, setting color buffers to (0, 0, 0, 1), and depth buffers to 1
+        void clear_attachments(const VkCommandBuffer cmd, std::span<VkRenderingAttachmentInfo> attachments, std::span<VkExtent2D> extents) {
+            std::vector<VkClearRect> clear_rects;
+            clear_rects.reserve(attachments.size());
+            std::vector<VkClearAttachment> clear_properties;
+            clear_properties.reserve(attachments.size());
+
+            uint32_t color_attachment_count = 0;
+            for (size_t attachment_index = 0; attachment_index < attachments.size(); ++attachment_index) {
+                auto& attachment = attachments[attachment_index];
+                bool is_color = (attachment.imageLayout == VK_IMAGE_LAYOUT_COLOR_ATTACHMENT_OPTIMAL);
+                VkClearAttachment clear_prop = {};
+                if (is_color) {
+                    clear_prop.aspectMask = VK_IMAGE_ASPECT_COLOR_BIT;
+                    clear_prop.clearValue.color.float32[0] = 0.0f;
+                    clear_prop.clearValue.color.float32[1] = 0.0f;
+                    clear_prop.clearValue.color.float32[2] = 0.0f;
+                    clear_prop.clearValue.color.float32[3] = 1.0f;
+                    clear_prop.colorAttachment = color_attachment_count++;
+                } else {
+                    clear_prop.aspectMask = VK_IMAGE_ASPECT_DEPTH_BIT;
+                    clear_prop.clearValue.depthStencil.depth = 1.0f;
+                }
+                clear_properties.push_back(clear_prop);
+
+                VkRect2D rect = {};
+                rect.offset.x = 0;
+                rect.offset.y = 0;
+                rect.extent = extents[attachment_index];
+
+                VkClearRect clear_rect = {};
+                clear_rect.baseArrayLayer = 0;
+                clear_rect.layerCount = 1;
+                clear_rect.rect = rect;
+
+                clear_rects.push_back(clear_rect);
+            }
+
+            vkCmdClearAttachments(cmd, clear_properties.size(), clear_properties.data(), clear_rects.size(), clear_rects.data());
+        }
 
         void draw_background(const VkCommandBuffer cmd, const vk_types::AllocatedImage& background_target, const vk_types::Pipeline& pipeline, const DrawState& state) {
             vkCmdBindPipeline(cmd, pipeline.bind_point, pipeline.handle);
@@ -78,9 +120,11 @@ namespace vk_layer {
             vkCmdDispatch(cmd, std::ceil(background_target.image_extent.width / 16.0), std::ceil(background_target.image_extent.height / 16.0), 1);
         }
 
-        void draw_geometry(const VkCommandBuffer cmd, const vk_types::AllocatedImage& draw_target, const vk_types::Pipeline& pipeline, const std::vector<vk_types::GpuMeshBuffers>& buffers, const DrawState& state) {
+        void draw_geometry(const VkCommandBuffer cmd, const vk_types::AllocatedImage& draw_target, const vk_types::AllocatedImage& depth_buffer, const vk_types::Pipeline& pipeline, const std::vector<vk_types::GpuMeshBuffers>& buffers, const DrawState& state) {
             //begin a render pass  connected to our draw image
-            VkRenderingAttachmentInfo color_attachment = {}; // vkinit::attachment_info(_drawImage.imageView, nullptr, VK_IMAGE_LAYOUT_COLOR_ATTACHMENT_OPTIMAL);
+
+            // Set up draw target attachment
+            VkRenderingAttachmentInfo color_attachment = {}; 
             color_attachment.sType = VK_STRUCTURE_TYPE_RENDERING_ATTACHMENT_INFO;
             color_attachment.pNext = nullptr;
             color_attachment.imageLayout = VK_IMAGE_LAYOUT_COLOR_ATTACHMENT_OPTIMAL;
@@ -89,6 +133,18 @@ namespace vk_layer {
             color_attachment.storeOp = VK_ATTACHMENT_STORE_OP_STORE;
             // Not multisampling so set this off and leave the resolve view and layouts zeroed out
             color_attachment.resolveMode = VK_RESOLVE_MODE_NONE;
+            // Not using VK_ATTACHMENT_LOAD_OP_CLEAR, so no need to set clear value either
+
+            // Set up depth buffer attachment
+            VkRenderingAttachmentInfo depth_attachment = {}; 
+            depth_attachment.sType = VK_STRUCTURE_TYPE_RENDERING_ATTACHMENT_INFO;
+            depth_attachment.pNext = nullptr;
+            depth_attachment.imageLayout = VK_IMAGE_LAYOUT_DEPTH_ATTACHMENT_OPTIMAL;
+            depth_attachment.imageView = depth_buffer.image_view;
+            depth_attachment.loadOp = VK_ATTACHMENT_LOAD_OP_LOAD;
+            depth_attachment.storeOp = VK_ATTACHMENT_STORE_OP_STORE;
+            // Not multisampling so set this off and leave the resolve view and layouts zeroed out
+            depth_attachment.resolveMode = VK_RESOLVE_MODE_NONE;
             // Not using VK_ATTACHMENT_LOAD_OP_CLEAR, so no need to set clear value either
             
             VkRenderingInfo render_info = {};
@@ -99,7 +155,7 @@ namespace vk_layer {
             render_info.layerCount = 1;
             render_info.pColorAttachments = &color_attachment;
             render_info.colorAttachmentCount = 1;
-            // Leave depth and stencil attachments nulled out since unused
+            render_info.pDepthAttachment = &depth_attachment;
             render_info.renderArea.extent = draw_target.image_extent;
             render_info.renderArea.offset = VkOffset2D{ 0, 0 };
 
@@ -125,8 +181,12 @@ namespace vk_layer {
 
             vkCmdSetScissor(cmd, 0, 1, &scissor);
 
-            //launch a draw command to draw 3 vertices
-            //vkCmdDraw(cmd, 3, 1, 0, 0);
+            // Clear out color and depth buffers
+            std::array<VkRenderingAttachmentInfo, 2> attachments = {color_attachment, depth_attachment};
+            std::array<VkExtent2D, 2> extents = {draw_target.image_extent, depth_buffer.image_extent};
+            clear_attachments(cmd, attachments, extents);
+            
+            // Draw all buffers
             for (auto& buffer_group: buffers) {
                 vkCmdBindIndexBuffer(cmd, buffer_group.index_buffer.buffer, 0, VK_INDEX_TYPE_UINT32);
                 std::array<VkBuffer, 3> buffer_handles {{
@@ -252,7 +312,7 @@ namespace vk_layer {
 
         vk_image::transition_image(cmd, vk_res.draw_target.image, VK_IMAGE_LAYOUT_GENERAL, VK_IMAGE_LAYOUT_COLOR_ATTACHMENT_OPTIMAL);
 
-        draw_geometry(cmd, vk_res.draw_target, vk_res.graphics_pipeline, buffers, state);
+        draw_geometry(cmd, vk_res.draw_target, vk_res.depth_buffer, vk_res.graphics_pipeline, buffers, state);
 
         // Transfer from the draw target to the swapchain
         vk_image::transition_image(cmd, vk_res.draw_target.image, VK_IMAGE_LAYOUT_COLOR_ATTACHMENT_OPTIMAL, VK_IMAGE_LAYOUT_TRANSFER_SRC_OPTIMAL);

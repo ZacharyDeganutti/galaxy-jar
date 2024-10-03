@@ -72,7 +72,7 @@ namespace vk_init {
     VkShaderModule init_shader_module(const VkDevice device, const char *file_path, vk_types::CleanupProcedures& cleanup_procedures);
     VkPipelineLayout init_pipeline_layout(const VkDevice device, const std::vector<VkDescriptorSetLayout>& descriptor_set_layouts, vk_types::CleanupProcedures& cleanup_procedures);
     vk_types::Pipeline init_compute_pipeline(const VkDevice device, const VkPipelineLayout compute_pipeline_layout, const VkShaderModule shader_module, const VkDescriptorSet descriptor_set, vk_types::CleanupProcedures& cleanup_procedures);
-    vk_types::Pipeline init_graphics_pipeline(const VkDevice device, const VkPipelineLayout pipeline_layout, const VkFormat& target_format, const VkShaderModule vert_shader_module, const VkShaderModule frag_shader_module, const VkDescriptorSet descriptor_set, vk_types::CleanupProcedures& cleanup_procedures);
+    vk_types::Pipeline init_graphics_pipeline(const VkDevice device, const VkPipelineLayout pipeline_layout, const VkFormat& target_format, const VkFormat& depth_format, const VkShaderModule vert_shader_module, const VkShaderModule frag_shader_module, const VkDescriptorSet descriptor_set, vk_types::CleanupProcedures& cleanup_procedures);
 }
 
 namespace vk_init {
@@ -578,7 +578,7 @@ namespace vk_init {
         image_view_create_info.components.g = VK_COMPONENT_SWIZZLE_IDENTITY;
         image_view_create_info.components.b = VK_COMPONENT_SWIZZLE_IDENTITY;
         image_view_create_info.components.a = VK_COMPONENT_SWIZZLE_IDENTITY;
-        image_view_create_info.subresourceRange.aspectMask = VK_IMAGE_ASPECT_COLOR_BIT;
+        image_view_create_info.subresourceRange.aspectMask = (format >= VK_FORMAT_D16_UNORM) && (format <= VK_FORMAT_D32_SFLOAT_S8_UINT) ? VK_IMAGE_ASPECT_DEPTH_BIT : VK_IMAGE_ASPECT_COLOR_BIT;
         image_view_create_info.subresourceRange.baseMipLevel = 0;
         image_view_create_info.subresourceRange.levelCount = 1;
         image_view_create_info.subresourceRange.baseArrayLayer = 0;
@@ -956,7 +956,7 @@ namespace vk_init {
         return pipeline;
     }
 
-    vk_types::Pipeline init_graphics_pipeline(const VkDevice device, const VkPipelineLayout pipeline_layout, const VkFormat& target_format, const VkShaderModule vert_shader_module, const VkShaderModule frag_shader_module, const VkDescriptorSet descriptor_set, vk_types::CleanupProcedures& cleanup_procedures) {
+    vk_types::Pipeline init_graphics_pipeline(const VkDevice device, const VkPipelineLayout pipeline_layout, const VkFormat& target_format, const VkFormat& depth_format, const VkShaderModule vert_shader_module, const VkShaderModule frag_shader_module, const VkDescriptorSet descriptor_set, vk_types::CleanupProcedures& cleanup_procedures) {
         
         /// Basic viewport setup
         VkPipelineViewportStateCreateInfo viewport_info = {};
@@ -1044,7 +1044,7 @@ namespace vk_init {
         rasterization_info.polygonMode = VK_POLYGON_MODE_FILL;
         rasterization_info.lineWidth = 1.0f;
         // Culling and winding order
-        rasterization_info.cullMode = VK_CULL_MODE_NONE;
+        rasterization_info.cullMode = VK_CULL_MODE_BACK_BIT;
         rasterization_info.frontFace = VK_FRONT_FACE_CLOCKWISE;
 
         /// Multisampling configuration (AA, etc)
@@ -1064,15 +1064,15 @@ namespace vk_init {
         rendering_info.pNext = nullptr;
         rendering_info.colorAttachmentCount = 1;
         rendering_info.pColorAttachmentFormats = &target_format;
-        rendering_info.depthAttachmentFormat = VK_FORMAT_UNDEFINED; // Might need to be a depth format by default
+        rendering_info.depthAttachmentFormat = depth_format;
 
-        /// Configure depth (disabled by default)
+        /// Configure depth
         VkPipelineDepthStencilStateCreateInfo depth_info = {};
         depth_info.sType = VK_STRUCTURE_TYPE_PIPELINE_DEPTH_STENCIL_STATE_CREATE_INFO;
         depth_info.pNext = nullptr;
-        depth_info.depthTestEnable = VK_FALSE;
-        depth_info.depthWriteEnable = VK_FALSE;
-        depth_info.depthCompareOp = VK_COMPARE_OP_NEVER;
+        depth_info.depthTestEnable = VK_TRUE;
+        depth_info.depthWriteEnable = VK_TRUE;
+        depth_info.depthCompareOp = VK_COMPARE_OP_LESS;
         depth_info.depthBoundsTestEnable = VK_FALSE;
         depth_info.stencilTestEnable = VK_FALSE;
         depth_info.front = {};
@@ -1172,6 +1172,20 @@ namespace vk_init {
 
         vk_types::AllocatedImage draw_target = init_allocated_image(vulkan_device, allocator, draw_target_format, draw_target_flags, draw_target_extent, cleanup_procedures);
 
+        // Allocate a depth target as well
+        // TODO: make more robust format checks
+        VkFormat depth_buffer_format = VK_FORMAT_D16_UNORM;
+        VkImageUsageFlags depth_buffer_flags = 
+            VK_IMAGE_USAGE_DEPTH_STENCIL_ATTACHMENT_BIT
+            | VK_IMAGE_USAGE_SAMPLED_BIT
+            | VK_IMAGE_USAGE_TRANSFER_DST_BIT;
+        VkExtent2D depth_buffer_extent = {
+            swapchain.extent.width,
+            swapchain.extent.height
+        };
+
+        vk_types::AllocatedImage depth_buffer = init_allocated_image(vulkan_device, allocator, depth_buffer_format, depth_buffer_flags, depth_buffer_extent, cleanup_procedures);
+
         // Setup descriptors for compute pipeline
         DescriptorAllocator descriptor_allocator = {};
         std::vector<VkDescriptorType> compute_descriptor_types = { VK_DESCRIPTOR_TYPE_STORAGE_IMAGE };
@@ -1188,7 +1202,7 @@ namespace vk_init {
         VkShaderModule vert_shader = init_shader_module(vulkan_device, "../../../src/shaders/colored_triangle.glsl.vert.spv", cleanup_procedures);
         VkShaderModule frag_shader = init_shader_module(vulkan_device, "../../../src/shaders/colored_triangle.glsl.frag.spv", cleanup_procedures);
         VkPipelineLayout graphics_pipeline_layout = init_pipeline_layout(vulkan_device, {}, cleanup_procedures);
-        vk_types::Pipeline graphics_pipeline = init_graphics_pipeline(vulkan_device, graphics_pipeline_layout, draw_target.image_format, vert_shader, frag_shader, {}, cleanup_procedures);
+        vk_types::Pipeline graphics_pipeline = init_graphics_pipeline(vulkan_device, graphics_pipeline_layout, draw_target.image_format, depth_buffer.image_format, vert_shader, frag_shader, {}, cleanup_procedures);
         return vk_types::Context {
             cleanup_procedures,
             vulkan_instance,
@@ -1203,6 +1217,7 @@ namespace vk_init {
             fence_immediate,
             allocator,
             draw_target,
+            depth_buffer,
             compute_pipeline,
             graphics_pipeline,
             DOUBLE_BUFFER

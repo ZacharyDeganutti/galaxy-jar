@@ -100,6 +100,7 @@ namespace vk_types{
         VkFence fence_immediate;
         VmaAllocator allocator;
         AllocatedImage draw_target;
+        AllocatedImage depth_buffer;
         Pipeline compute_pipeline;
         Pipeline graphics_pipeline;
         uint8_t buffer_count;

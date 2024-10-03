@@ -1,13 +1,13 @@
 #version 450
 
 //shader input
-layout (location = 0) in vec3 normal;
+layout (location = 3) in vec3 normal_interp;
 
 //output write
-layout (location = 0) out vec4 outFragColor;
+layout (location = 0) out vec4 frag_color;
 
 void main() 
 {
-	//return red
-	outFragColor = vec4(normal,1.0f);
+	//return normal
+	frag_color = vec4((normalize(normal_interp) * 0.5f ) + 0.5f, 1.0);
 }
