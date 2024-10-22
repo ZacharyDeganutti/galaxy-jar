@@ -37,6 +37,12 @@ namespace vk_types{
         uint32_t index_count;
     };
 
+    template <class T>
+    struct PersistentUniformBuffer {
+        AllocatedBuffer buffer_resource;
+        const T* buffer_view;
+    };
+
     struct CleanupProcedures {
         private:
         std::deque<std::function<void()>> procedure_stack;

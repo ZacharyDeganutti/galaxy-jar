@@ -1,4 +1,6 @@
 #include "vk_init.hpp"
+#include "vk_descriptors.hpp"
+#include "vk_buffer.hpp"
 #include "glmvk.hpp"
 
 #include <algorithm>
@@ -33,21 +35,6 @@ namespace vk_init {
         std::vector<VkPresentModeKHR> present_modes;
     };
 
-    struct DescriptorAllocator {
-        struct PoolSizeRatio{
-            VkDescriptorType type;
-            float ratio;
-        };
-
-        VkDescriptorPool pool;
-
-        void init_pool(const VkDevice device, const uint32_t maxSets, const std::span<PoolSizeRatio> pool_ratios);
-        void clear_descriptors(const VkDevice device);
-        void destroy_pool(const VkDevice device);
-
-        VkDescriptorSet allocate(const VkDevice device, const VkDescriptorSetLayout layout);
-    };
-
     SwapchainSupportDetails query_swapchain_support(const VkPhysicalDevice device, const VkSurfaceKHR surface);
     bool are_device_extensions_supported(const VkPhysicalDevice device, const std::vector<const char*>& required_extensions);
     bool are_vulkan_1_3_features_supported(const VkPhysicalDevice device);
@@ -67,7 +54,6 @@ namespace vk_init {
     vk_types::Swapchain init_swapchain(const VkDevice device, const GpuAndQueueInfo& gpu_info, const VkSurfaceKHR surface, const uint32_t width, const uint32_t height, vk_types::CleanupProcedures& cleanup_procedures);
     std::vector<vk_types::Command> init_command(const VkDevice device, const GpuAndQueueInfo& gpu, const uint8_t buffer_count, vk_types::CleanupProcedures& cleanup_procedures);
     std::vector<vk_types::Synchronization> init_synchronization(const VkDevice device, const uint8_t buffer_count, vk_types::CleanupProcedures& cleanup_procedures);
-    VkDescriptorSet init_image_descriptors(const VkDevice device, const VkImageView image_view, const VkDescriptorSetLayout descriptor_layout, DescriptorAllocator& descriptor_allocator, vk_types::CleanupProcedures& cleanup_procedures);
     VmaAllocator init_allocator(const VkInstance instance, const VkDevice device, const GpuAndQueueInfo& gpu, vk_types::CleanupProcedures& cleanup_procedures);
     VkShaderModule init_shader_module(const VkDevice device, const char *file_path, vk_types::CleanupProcedures& cleanup_procedures);
     VkPipelineLayout init_pipeline_layout(const VkDevice device, const std::vector<VkDescriptorSetLayout>& descriptor_set_layouts, vk_types::CleanupProcedures& cleanup_procedures);
@@ -76,51 +62,6 @@ namespace vk_init {
 }
 
 namespace vk_init {
-    void DescriptorAllocator::init_pool(VkDevice device, uint32_t maxSets, std::span<PoolSizeRatio> pool_ratios) {
-        std::vector<VkDescriptorPoolSize> pool_sizes;
-        for (PoolSizeRatio ratio : pool_ratios) {
-            pool_sizes.push_back(VkDescriptorPoolSize{
-                .type = ratio.type,
-                .descriptorCount = uint32_t(ratio.ratio * maxSets)
-            });
-        }
-
-        VkDescriptorPoolCreateInfo pool_info = {};
-        pool_info.sType = VK_STRUCTURE_TYPE_DESCRIPTOR_POOL_CREATE_INFO;
-        pool_info.flags = 0;
-        pool_info.maxSets = maxSets;
-        pool_info.poolSizeCount = static_cast<uint32_t>(pool_sizes.size());
-        pool_info.pPoolSizes = pool_sizes.data();
-
-        vkCreateDescriptorPool(device, &pool_info, nullptr, &pool);
-    }
-
-    void DescriptorAllocator::clear_descriptors(const VkDevice device)
-    {
-        vkResetDescriptorPool(device, pool, 0);
-    }
-
-    void DescriptorAllocator::destroy_pool(const VkDevice device)
-    {
-        vkDestroyDescriptorPool(device, pool, nullptr);
-    }
-
-    VkDescriptorSet DescriptorAllocator::allocate(const VkDevice device, const VkDescriptorSetLayout layout) {
-        VkDescriptorSetAllocateInfo alloc_info = {.sType = VK_STRUCTURE_TYPE_DESCRIPTOR_SET_ALLOCATE_INFO};
-        alloc_info.pNext = nullptr;
-        alloc_info.descriptorPool = pool;
-        alloc_info.descriptorSetCount = 1;
-        alloc_info.pSetLayouts = &layout;
-
-        VkDescriptorSet ds;
-        if(vkAllocateDescriptorSets(device, &alloc_info, &ds) != VK_SUCCESS) {
-            printf("Failure to allocate descriptor set!\n");
-            exit(EXIT_FAILURE);
-        };
-
-        return ds;
-    }
-
     VkShaderModule init_shader_module(const VkDevice device, const char *file_path, vk_types::CleanupProcedures& cleanup_procedures) {
         // open the file. With cursor at the end
         std::ifstream file(file_path, std::ios::ate | std::ios::binary);
@@ -811,75 +752,6 @@ namespace vk_init {
         return per_frame_synchronization_structures;
     }
 
-    VkDescriptorSetLayout init_descriptor_layout(const VkDevice device, VkShaderStageFlags stage, const std::vector<VkDescriptorType>& ordered_binding_types, vk_types::CleanupProcedures& cleanup_procedures) {
-        std::vector<VkDescriptorSetLayoutBinding> bindings(ordered_binding_types.size());
-        for (int binding_num = 0; binding_num < ordered_binding_types.size(); ++binding_num) {
-            VkDescriptorSetLayoutBinding bind {};
-            bind.binding = binding_num;
-            bind.descriptorCount = 1;
-            bind.descriptorType = ordered_binding_types[binding_num];
-            bind.stageFlags = stage;
-
-            bindings[binding_num] = bind;
-        }
-
-        VkDescriptorSetLayoutCreateInfo info = {};
-        info.sType = VK_STRUCTURE_TYPE_DESCRIPTOR_SET_LAYOUT_CREATE_INFO;
-        info.pNext = nullptr; // This may need to be extended at some point
-
-        info.pBindings = bindings.data();
-        info.bindingCount = (uint32_t)bindings.size();
-        info.flags = 0; // This too
-
-        VkDescriptorSetLayout set = {};
-        if(vkCreateDescriptorSetLayout(device, &info, nullptr, &set) != VK_SUCCESS) {
-            printf("Unable to create descriptor set layout\n");
-            exit(EXIT_FAILURE);
-        };
-
-        cleanup_procedures.add([device, set]() {
-            vkDestroyDescriptorSetLayout(device, set, nullptr);
-        });
-
-        return set;
-    }
-
-    VkDescriptorSet init_image_descriptors(const VkDevice device, const VkImageView image_view, const VkDescriptorSetLayout descriptor_layout, DescriptorAllocator& descriptor_allocator, vk_types::CleanupProcedures& cleanup_procedures) {
-
-        //create a descriptor pool that will hold 10 sets with 1 image each
-        std::vector<DescriptorAllocator::PoolSizeRatio> sizes =
-        {
-            {VK_DESCRIPTOR_TYPE_STORAGE_IMAGE, 1}
-        };
-
-        descriptor_allocator.init_pool(device, 10, sizes);
-
-        //allocate a descriptor set for our draw image
-        VkDescriptorSet draw_descriptors = descriptor_allocator.allocate(device, descriptor_layout);
-
-        VkDescriptorImageInfo img_info{};
-        img_info.imageLayout = VK_IMAGE_LAYOUT_GENERAL;
-        img_info.imageView = image_view;
-
-        VkWriteDescriptorSet draw_image_write = {};
-        draw_image_write.sType = VK_STRUCTURE_TYPE_WRITE_DESCRIPTOR_SET;
-        draw_image_write.pNext = nullptr;
-
-        draw_image_write.dstBinding = 0;
-        draw_image_write.dstSet = draw_descriptors;
-        draw_image_write.descriptorCount = 1;
-        draw_image_write.descriptorType = VK_DESCRIPTOR_TYPE_STORAGE_IMAGE;
-        draw_image_write.pImageInfo = &img_info;
-
-        vkUpdateDescriptorSets(device, 1, &draw_image_write, 0, nullptr);
-
-        cleanup_procedures.add([device, descriptor_allocator]() mutable {
-            descriptor_allocator.destroy_pool(device);
-        });
-
-        return draw_descriptors;
-    }
-
     VmaAllocator init_allocator(const VkInstance instance, const VkDevice device, const GpuAndQueueInfo& gpu, vk_types::CleanupProcedures& cleanup_procedures) {
         VmaAllocatorCreateInfo allocatorInfo = {};
         allocatorInfo.physicalDevice = gpu.gpu;
@@ -1187,10 +1059,10 @@ namespace vk_init {
         vk_types::AllocatedImage depth_buffer = init_allocated_image(vulkan_device, allocator, depth_buffer_format, depth_buffer_flags, depth_buffer_extent, cleanup_procedures);
 
         // Setup descriptors for compute pipeline
-        DescriptorAllocator descriptor_allocator = {};
+        vk_descriptors::DescriptorAllocator descriptor_allocator = {};
         std::vector<VkDescriptorType> compute_descriptor_types = { VK_DESCRIPTOR_TYPE_STORAGE_IMAGE };
-        VkDescriptorSetLayout compute_descriptor_layout = init_descriptor_layout(vulkan_device, VK_SHADER_STAGE_COMPUTE_BIT, compute_descriptor_types, cleanup_procedures);
-        VkDescriptorSet compute_descriptor_set = init_image_descriptors(vulkan_device, draw_target.image_view, compute_descriptor_layout, descriptor_allocator, cleanup_procedures);
+        VkDescriptorSetLayout compute_descriptor_layout = vk_descriptors::init_descriptor_layout(vulkan_device, VK_SHADER_STAGE_COMPUTE_BIT, compute_descriptor_types, cleanup_procedures);
+        VkDescriptorSet compute_descriptor_set = vk_descriptors::init_image_descriptors(vulkan_device, draw_target.image_view, compute_descriptor_layout, descriptor_allocator, cleanup_procedures);
 
         // Assemble the compute pipeline
         VkShaderModule compute_shader = init_shader_module(vulkan_device, "../../../src/shaders/gradient.glsl.comp.spv", cleanup_procedures);
@@ -1201,6 +1073,7 @@ namespace vk_init {
         // Assemble the graphics pipeline
         VkShaderModule vert_shader = init_shader_module(vulkan_device, "../../../src/shaders/colored_triangle.glsl.vert.spv", cleanup_procedures);
         VkShaderModule frag_shader = init_shader_module(vulkan_device, "../../../src/shaders/colored_triangle.glsl.frag.spv", cleanup_procedures);
+        
         VkPipelineLayout graphics_pipeline_layout = init_pipeline_layout(vulkan_device, {}, cleanup_procedures);
         vk_types::Pipeline graphics_pipeline = init_graphics_pipeline(vulkan_device, graphics_pipeline_layout, draw_target.image_format, depth_buffer.image_format, vert_shader, frag_shader, {}, cleanup_procedures);
         return vk_types::Context {
