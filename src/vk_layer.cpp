@@ -1,6 +1,9 @@
+#include "vk_buffer.hpp"
+#include "vk_descriptors.hpp"
 #include "vk_image.hpp"
 #include "vk_init.hpp"
 #include "vk_layer.hpp"
+#include "vk_pipeline.hpp"
 #include "vk_types.hpp"
 
 #include <GLFW/glfw3.h>
@@ -162,6 +165,7 @@ namespace vk_layer {
             vkCmdBeginRendering(cmd, &render_info);
 
             vkCmdBindPipeline(cmd, VK_PIPELINE_BIND_POINT_GRAPHICS, pipeline.handle);
+            vkCmdBindDescriptorSets(cmd, pipeline.bind_point, pipeline.layout, 0, 1, &pipeline.descriptors, 0, nullptr);
 
             //set dynamic viewport and scissor
             VkViewport viewport = {};
@@ -247,8 +251,51 @@ namespace vk_layer {
             exit(EXIT_FAILURE);
         }
     }
+    
+    RenderResources build_render_resources(vk_types::Context& context, vk_types::CleanupProcedures& lifetime) {
+        // Setup descriptors for compute pipeline
+        vk_descriptors::DescriptorAllocator descriptor_allocator = {};
+        std::vector<VkDescriptorType> compute_descriptor_types = { VK_DESCRIPTOR_TYPE_STORAGE_IMAGE };
+        VkDescriptorSetLayout compute_descriptor_layout = vk_descriptors::init_descriptor_layout(context.device, VK_SHADER_STAGE_COMPUTE_BIT, compute_descriptor_types, lifetime);
+        VkDescriptorSet compute_descriptor_set = vk_descriptors::init_image_descriptors(context.device, context.draw_target.image_view, compute_descriptor_layout, descriptor_allocator, lifetime);
 
-    DrawState draw(const vk_types::Context& vk_res, const std::vector<vk_types::GpuMeshBuffers>& buffers, const DrawState& state) {
+        // Assemble the compute pipeline
+        VkShaderModule compute_shader = vk_pipeline::init_shader_module(context.device, "../../../src/shaders/gradient.glsl.comp.spv", lifetime);
+        std::vector<VkDescriptorSetLayout> compute_descriptor_set_layouts = { compute_descriptor_layout };
+        VkPipelineLayout compute_pipeline_layout = vk_pipeline::init_pipeline_layout(context.device, compute_descriptor_set_layouts, lifetime);
+        vk_types::Pipeline compute_pipeline = vk_pipeline::init_compute_pipeline(context.device, compute_pipeline_layout, compute_shader, compute_descriptor_set, lifetime);
+
+        // Setup descriptors for graphics pipeline
+        vk_types::PersistentUniformBuffer<glm::mat4> ubo = vk_buffer::create_persistent_mapped_uniform_buffer<glm::mat4>(context);
+        ubo = ubo.update(glm::mat4(1.0f));
+        std::vector<VkDescriptorType> graphics_descriptor_types = { VK_DESCRIPTOR_TYPE_UNIFORM_BUFFER };
+        VkDescriptorSetLayout graphics_descriptor_layout = vk_descriptors::init_descriptor_layout(context.device, VK_SHADER_STAGE_VERTEX_BIT, graphics_descriptor_types, lifetime);
+        VkDescriptorSet graphics_descriptor_set = vk_descriptors::init_buffer_descriptors(context.device, ubo.buffer_resource.buffer, vk_descriptors::DescriptorType::Uniform, graphics_descriptor_layout, descriptor_allocator, lifetime);
+
+        // Assemble the graphics pipeline
+        VkShaderModule vert_shader = vk_pipeline::init_shader_module(context.device, "../../../src/shaders/colored_triangle.glsl.vert.spv", lifetime);
+        VkShaderModule frag_shader = vk_pipeline::init_shader_module(context.device, "../../../src/shaders/colored_triangle.glsl.frag.spv", lifetime);
+        
+        std::vector<VkDescriptorSetLayout> graphics_pipeline_layout_set = { graphics_descriptor_layout };
+        VkPipelineLayout graphics_pipeline_layout = vk_pipeline::init_pipeline_layout(context.device, graphics_pipeline_layout_set, lifetime);
+        vk_types::Pipeline graphics_pipeline = vk_pipeline::init_graphics_pipeline(context.device, graphics_pipeline_layout, context.draw_target.image_format, context.depth_buffer.image_format, vert_shader, frag_shader, graphics_descriptor_set, lifetime);
+
+        Pipelines pipes =  Pipelines {
+            .graphics = graphics_pipeline,
+            .compute = compute_pipeline,
+        };
+
+        Buffers buffers = Buffers {
+            .modelview_ubo = ubo,
+        };
+
+        return RenderResources {
+            .pipelines = pipes,
+            .buffers = buffers,
+        };
+    }
+
+    DrawState draw(const vk_types::Context& vk_res, const Pipelines& pipelines, const std::vector<vk_types::GpuMeshBuffers>& buffers, const DrawState& state) {
         // Wait for previous frame to finish drawing (if applicable). Timeout 1s
         if (state.not_first_frame) {
             uint32_t prior_frame = (state.buf_num + (vk_res.buffer_count - 1)) % vk_res.buffer_count;
@@ -308,11 +355,11 @@ namespace vk_layer {
         // Make the draw target drawable
         vk_image::transition_image(cmd, vk_res.draw_target.image, VK_IMAGE_LAYOUT_UNDEFINED, VK_IMAGE_LAYOUT_GENERAL);
 
-        draw_background(cmd, vk_res.draw_target, vk_res.compute_pipeline, state);
+        draw_background(cmd, vk_res.draw_target, pipelines.compute, state);
 
         vk_image::transition_image(cmd, vk_res.draw_target.image, VK_IMAGE_LAYOUT_GENERAL, VK_IMAGE_LAYOUT_COLOR_ATTACHMENT_OPTIMAL);
 
-        draw_geometry(cmd, vk_res.draw_target, vk_res.depth_buffer, vk_res.graphics_pipeline, buffers, state);
+        draw_geometry(cmd, vk_res.draw_target, vk_res.depth_buffer, pipelines.graphics, buffers, state);
 
         // Transfer from the draw target to the swapchain
         vk_image::transition_image(cmd, vk_res.draw_target.image, VK_IMAGE_LAYOUT_COLOR_ATTACHMENT_OPTIMAL, VK_IMAGE_LAYOUT_TRANSFER_SRC_OPTIMAL);
@@ -360,10 +407,16 @@ namespace vk_layer {
             exit(EXIT_FAILURE);
         }
 
+        /// Update state ///
+        glm::mat4 rotated_modelview = glm::rotate(*state.buffers.modelview_ubo.buffer_view, glm::radians(0.01f), glm::vec3(0.0f, 1.0f, 0.0f));
+        Buffers updated_buffers = Buffers {
+            .modelview_ubo = state.buffers.modelview_ubo.update(rotated_modelview),
+        };
         return DrawState {
             .not_first_frame = true,
             .buf_num = static_cast<uint8_t>((state.buf_num + 1u) % vk_res.buffer_count),
-            .frame_num = state.frame_num + 1
+            .frame_num = state.frame_num + 1,
+            .buffers = updated_buffers
         };
     }
 

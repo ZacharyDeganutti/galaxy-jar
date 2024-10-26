@@ -17,6 +17,9 @@ namespace vk_pipeline {
     // Creates a pipeline layout with the specified descriptor set layouts
     VkPipelineLayout init_pipeline_layout(const VkDevice device, const std::vector<VkDescriptorSetLayout>& descriptor_set_layouts, vk_types::CleanupProcedures& cleanup_procedures);
 
+    // Creates a shader module from the given SPIR-V file.
+    VkShaderModule init_shader_module(const VkDevice device, const char *file_path, vk_types::CleanupProcedures& cleanup_procedures);
+
 }
 
 #endif // VK_PIPELINE_H_

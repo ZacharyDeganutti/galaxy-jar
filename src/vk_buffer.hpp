@@ -5,6 +5,8 @@
 #include "geometry.hpp"
 
 namespace vk_buffer {
+    // Generic buffer allocation function that can be used for various buffer types. Not recommended for use outside of this module.
+    vk_types::AllocatedBuffer create_buffer(const VmaAllocator allocator, const size_t alloc_size, const VkBufferUsageFlags usage, const VmaMemoryUsage memory_usage, vk_types::CleanupProcedures& cleanup_procedures);
     
     // Uploads model data to the GPU with a lifetime matching that of the context
     std::vector<vk_types::GpuMeshBuffers> create_mesh_buffers(vk_types::Context& context, geometry::Model model);
@@ -50,7 +52,7 @@ namespace vk_buffer {
     // Creates a uniform buffer with data of type T that is mapped for the lifetime of the provided context
     template <class T>
     vk_types::PersistentUniformBuffer<T> create_persistent_mapped_uniform_buffer(vk_types::Context& context) {
-        return create_persistent_mapped_uniform_buffer(context, context.cleanup_procedures);
+        return create_persistent_mapped_uniform_buffer<T>(context, context.cleanup_procedures);
     }
 }
 

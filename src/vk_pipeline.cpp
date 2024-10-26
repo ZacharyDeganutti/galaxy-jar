@@ -1,5 +1,7 @@
 #include "vk_pipeline.hpp"
 #include <array>
+#include <fstream>
+#include <ios>
 
 namespace vk_pipeline {
 
@@ -234,5 +236,55 @@ namespace vk_pipeline {
         });
 
         return pipeline_layout;
+    }
+
+    VkShaderModule init_shader_module(const VkDevice device, const char *file_path, vk_types::CleanupProcedures& cleanup_procedures) {
+        // open the file. With cursor at the end
+        std::ifstream file(file_path, std::ios::ate | std::ios::binary);
+
+        if (!file.is_open())
+        {
+            printf("Unable to open shader file: %s\n", file_path);
+            exit(EXIT_FAILURE);
+        }
+
+        // find what the size of the file is by looking up the location of the cursor
+        // because the cursor is at the end, it gives the size directly in bytes
+        size_t file_size = static_cast<size_t>(file.tellg());
+
+        // spirv expects the buffer to be uint32, so make sure to reserve a int
+        // vector big enough for the entire file
+        std::vector<uint32_t> buffer(file_size / sizeof(uint32_t));
+
+        // put file cursor at beginning
+        file.seekg(0);
+
+        // load the entire file into the buffer
+        file.read(reinterpret_cast<char *>(buffer.data()), file_size);
+
+        // now that the file is loaded into the buffer, we can close it
+        file.close();
+
+        // create a new shader module, using the buffer we loaded
+        VkShaderModuleCreateInfo shader_info = {};
+        shader_info.sType = VK_STRUCTURE_TYPE_SHADER_MODULE_CREATE_INFO;
+        shader_info.pNext = nullptr;
+
+        // codeSize has to be in bytes, so multiply the ints in the buffer by size of
+        // int to know the real size of the buffer
+        shader_info.codeSize = buffer.size() * sizeof(uint32_t);
+        shader_info.pCode = buffer.data();
+
+        VkShaderModule shader_module = {};
+        if (vkCreateShaderModule(device, &shader_info, nullptr, &shader_module) != VK_SUCCESS)
+        {
+            printf("Unable to generate shader module from file: %s\n", file_path);
+            exit(EXIT_FAILURE);
+        }
+
+        cleanup_procedures.add([device, shader_module]() {
+            vkDestroyShaderModule(device, shader_module, nullptr);
+        });
+        return shader_module;
     }
 }

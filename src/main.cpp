@@ -30,22 +30,26 @@ int main() {
     };
 
     // Initialize vulkan
-    vk_types::Context vulkan_resources = vk_init::init(required_device_extensions, glfw_extensions, window);
+    vk_types::Context context = vk_init::init(required_device_extensions, glfw_extensions, window);
+    
+    // Load other resources
+    geometry::Model dummy_model = geometry::load_obj_model("sponza.obj", "../../../assets/sponza/");
+    std::vector<vk_types::GpuMeshBuffers> mesh_resources = vk_buffer::create_mesh_buffers(context, dummy_model);
+    vk_layer::RenderResources render_resources = vk_layer::build_render_resources(context, context.cleanup_procedures);
+
     vk_layer::DrawState draw_state = {
         .not_first_frame = false,
         .buf_num = 0,
-        .frame_num = 0
+        .frame_num = 0,
+        .buffers = render_resources.buffers,
     };
-    // Load other resources
-    geometry::Model dummy_model = geometry::load_obj_model("sponza.obj", "../../../assets/sponza/");
-    std::vector<vk_types::GpuMeshBuffers> mesh_resources = vk_buffer::create_mesh_buffers(vulkan_resources, dummy_model);
     
     while(!glfwWindowShouldClose(window)) {
         glfwPollEvents();
-        draw_state = vk_layer::draw(vulkan_resources, mesh_resources, draw_state);
+        draw_state = vk_layer::draw(context, render_resources.pipelines, mesh_resources, draw_state);
     }
 
-    vk_layer::cleanup(vulkan_resources, vulkan_resources.cleanup_procedures);
+    vk_layer::cleanup(context, context.cleanup_procedures);
     glfwDestroyWindow(window);
     glfwTerminate();
     

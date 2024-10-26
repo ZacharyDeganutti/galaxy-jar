@@ -8,6 +8,7 @@
 #include <span>
 #include <deque>
 #include <functional>
+#include <cstring>
 
 namespace vk_types{
     struct AllocatedImage {
@@ -41,6 +42,17 @@ namespace vk_types{
     struct PersistentUniformBuffer {
         AllocatedBuffer buffer_resource;
         const T* buffer_view;
+
+        // Rebuilds the PersistentUniformBuffer with the new value.
+        PersistentUniformBuffer<T> update(const T& new_value) const {
+            PersistentUniformBuffer<T> rebuilt_buffer = {
+                buffer_resource,
+                buffer_view
+            };
+
+            std::memcpy((void*)(rebuilt_buffer.buffer_view), &new_value, sizeof(T));
+            return rebuilt_buffer;
+        };
     };
 
     struct CleanupProcedures {
@@ -107,8 +119,6 @@ namespace vk_types{
         VmaAllocator allocator;
         AllocatedImage draw_target;
         AllocatedImage depth_buffer;
-        Pipeline compute_pipeline;
-        Pipeline graphics_pipeline;
         uint8_t buffer_count;
     };
 

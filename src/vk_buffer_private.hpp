@@ -6,8 +6,6 @@
 #include "vk_mem_alloc.h"
 
 namespace vk_buffer {
-    vk_types::AllocatedBuffer create_buffer(const VmaAllocator allocator, const size_t alloc_size, const VkBufferUsageFlags usage, const VmaMemoryUsage memory_usage, vk_types::CleanupProcedures& cleanup_procedures);
-
     vk_types::AllocatedBuffer upload_index_buffer(const vk_types::Context& context, const std::vector<uint32_t>& indices, vk_types::CleanupProcedures& cleanup_procedures);
 
     template <typename T>
