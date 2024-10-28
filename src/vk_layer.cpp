@@ -119,7 +119,7 @@ namespace vk_layer {
 
         void draw_background(const VkCommandBuffer cmd, const vk_types::AllocatedImage& background_target, const vk_types::Pipeline& pipeline, const DrawState& state) {
             vkCmdBindPipeline(cmd, pipeline.bind_point, pipeline.handle);
-            vkCmdBindDescriptorSets(cmd, pipeline.bind_point, pipeline.layout, 0, 1, &pipeline.descriptors, 0, nullptr);
+            vkCmdBindDescriptorSets(cmd, pipeline.bind_point, pipeline.layout, 0, pipeline.descriptors.size(), pipeline.descriptors.data(), 0, nullptr);
             vkCmdDispatch(cmd, std::ceil(background_target.image_extent.width / 16.0), std::ceil(background_target.image_extent.height / 16.0), 1);
         }
 
@@ -165,7 +165,7 @@ namespace vk_layer {
             vkCmdBeginRendering(cmd, &render_info);
 
             vkCmdBindPipeline(cmd, VK_PIPELINE_BIND_POINT_GRAPHICS, pipeline.handle);
-            vkCmdBindDescriptorSets(cmd, pipeline.bind_point, pipeline.layout, 0, 1, &pipeline.descriptors, 0, nullptr);
+            vkCmdBindDescriptorSets(cmd, pipeline.bind_point, pipeline.layout, 0, pipeline.descriptors.size(), pipeline.descriptors.data(), 0, nullptr);
 
             //set dynamic viewport and scissor
             VkViewport viewport = {};
@@ -263,22 +263,25 @@ namespace vk_layer {
         VkShaderModule compute_shader = vk_pipeline::init_shader_module(context.device, "../../../src/shaders/gradient.glsl.comp.spv", lifetime);
         std::vector<VkDescriptorSetLayout> compute_descriptor_set_layouts = { compute_descriptor_layout };
         VkPipelineLayout compute_pipeline_layout = vk_pipeline::init_pipeline_layout(context.device, compute_descriptor_set_layouts, lifetime);
-        vk_types::Pipeline compute_pipeline = vk_pipeline::init_compute_pipeline(context.device, compute_pipeline_layout, compute_shader, compute_descriptor_set, lifetime);
+        vk_types::Pipeline compute_pipeline = vk_pipeline::init_compute_pipeline(context.device, compute_pipeline_layout, compute_shader, { compute_descriptor_set }, lifetime);
 
         // Setup descriptors for graphics pipeline
-        vk_types::PersistentUniformBuffer<glm::mat4> ubo = vk_buffer::create_persistent_mapped_uniform_buffer<glm::mat4>(context);
-        ubo = ubo.update(glm::mat4(1.0f));
+        vk_types::PersistentUniformBuffer<glm::mat4> modelview_ubo = vk_buffer::create_persistent_mapped_uniform_buffer<glm::mat4>(context);
+        vk_types::PersistentUniformBuffer<glm::vec4> brightness_ubo = vk_buffer::create_persistent_mapped_uniform_buffer<glm::vec4>(context);
+        modelview_ubo = modelview_ubo.update(glm::mat4(1.0f));
+        brightness_ubo = brightness_ubo.update(glm::vec4(0.0f, 0.0f, 0.0f, 1.0f));
         std::vector<VkDescriptorType> graphics_descriptor_types = { VK_DESCRIPTOR_TYPE_UNIFORM_BUFFER };
-        VkDescriptorSetLayout graphics_descriptor_layout = vk_descriptors::init_descriptor_layout(context.device, VK_SHADER_STAGE_VERTEX_BIT, graphics_descriptor_types, lifetime);
-        VkDescriptorSet graphics_descriptor_set = vk_descriptors::init_buffer_descriptors(context.device, ubo.buffer_resource.buffer, vk_descriptors::DescriptorType::Uniform, graphics_descriptor_layout, descriptor_allocator, lifetime);
+        VkDescriptorSetLayout graphics_ubo_descriptor_layout = vk_descriptors::init_descriptor_layout(context.device, VK_SHADER_STAGE_ALL_GRAPHICS, graphics_descriptor_types, lifetime);
+        VkDescriptorSet graphics_modelview_descriptor_set = vk_descriptors::init_buffer_descriptors(context.device, modelview_ubo.buffer_resource.buffer, vk_descriptors::DescriptorType::Uniform, graphics_ubo_descriptor_layout, descriptor_allocator, lifetime);
+        VkDescriptorSet graphics_brightness_descriptor_set = vk_descriptors::init_buffer_descriptors(context.device, brightness_ubo.buffer_resource.buffer, vk_descriptors::DescriptorType::Uniform, graphics_ubo_descriptor_layout, descriptor_allocator, lifetime);
 
         // Assemble the graphics pipeline
         VkShaderModule vert_shader = vk_pipeline::init_shader_module(context.device, "../../../src/shaders/colored_triangle.glsl.vert.spv", lifetime);
         VkShaderModule frag_shader = vk_pipeline::init_shader_module(context.device, "../../../src/shaders/colored_triangle.glsl.frag.spv", lifetime);
         
-        std::vector<VkDescriptorSetLayout> graphics_pipeline_layout_set = { graphics_descriptor_layout };
+        std::vector<VkDescriptorSetLayout> graphics_pipeline_layout_set = { graphics_ubo_descriptor_layout, graphics_ubo_descriptor_layout };
         VkPipelineLayout graphics_pipeline_layout = vk_pipeline::init_pipeline_layout(context.device, graphics_pipeline_layout_set, lifetime);
-        vk_types::Pipeline graphics_pipeline = vk_pipeline::init_graphics_pipeline(context.device, graphics_pipeline_layout, context.draw_target.image_format, context.depth_buffer.image_format, vert_shader, frag_shader, graphics_descriptor_set, lifetime);
+        vk_types::Pipeline graphics_pipeline = vk_pipeline::init_graphics_pipeline(context.device, graphics_pipeline_layout, context.draw_target.image_format, context.depth_buffer.image_format, vert_shader, frag_shader, { graphics_modelview_descriptor_set, graphics_brightness_descriptor_set }, lifetime);
 
         Pipelines pipes =  Pipelines {
             .graphics = graphics_pipeline,
@@ -286,7 +289,8 @@ namespace vk_layer {
         };
 
         Buffers buffers = Buffers {
-            .modelview_ubo = ubo,
+            .modelview_ubo = modelview_ubo,
+            .brightness_ubo = brightness_ubo,
         };
 
         return RenderResources {
@@ -409,8 +413,10 @@ namespace vk_layer {
 
         /// Update state ///
         glm::mat4 rotated_modelview = glm::rotate(*state.buffers.modelview_ubo.buffer_view, glm::radians(0.01f), glm::vec3(0.0f, 1.0f, 0.0f));
+        glm::vec4 current_brightness = glm::vec4(glm::vec3(glm::sin(glm::radians(((float)state.frame_num) / 200.0f))), 1.0f);
         Buffers updated_buffers = Buffers {
             .modelview_ubo = state.buffers.modelview_ubo.update(rotated_modelview),
+            .brightness_ubo = state.buffers.brightness_ubo.update(current_brightness),
         };
         return DrawState {
             .not_first_frame = true,

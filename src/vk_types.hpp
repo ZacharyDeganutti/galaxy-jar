@@ -95,7 +95,7 @@ namespace vk_types{
         VkPipeline handle;
         VkPipelineLayout layout;
         VkPipelineBindPoint bind_point;
-        VkDescriptorSet descriptors;
+        std::vector<VkDescriptorSet> descriptors;
     };
 
     struct Synchronization {

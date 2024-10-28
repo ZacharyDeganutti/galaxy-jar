@@ -18,6 +18,7 @@ namespace vk_layer
 {
     struct Buffers {
         vk_types::PersistentUniformBuffer<glm::mat4> modelview_ubo;
+        vk_types::PersistentUniformBuffer<glm::vec4> brightness_ubo;
     };
 
     struct Pipelines {

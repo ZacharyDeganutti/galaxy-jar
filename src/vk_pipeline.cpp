@@ -17,7 +17,7 @@ namespace vk_pipeline {
         return stage_info;
     }
 
-    vk_types::Pipeline init_graphics_pipeline(const VkDevice device, const VkPipelineLayout pipeline_layout, const VkFormat& target_format, const VkFormat& depth_format, const VkShaderModule vert_shader_module, const VkShaderModule frag_shader_module, const VkDescriptorSet descriptor_set, vk_types::CleanupProcedures& cleanup_procedures) {
+    vk_types::Pipeline init_graphics_pipeline(const VkDevice device, const VkPipelineLayout pipeline_layout, const VkFormat& target_format, const VkFormat& depth_format, const VkShaderModule vert_shader_module, const VkShaderModule frag_shader_module, const std::vector<VkDescriptorSet> descriptor_sets, vk_types::CleanupProcedures& cleanup_procedures) {
         /// Basic viewport setup
         VkPipelineViewportStateCreateInfo viewport_info = {};
         viewport_info.sType = VK_STRUCTURE_TYPE_PIPELINE_VIEWPORT_STATE_CREATE_INFO;
@@ -180,7 +180,7 @@ namespace vk_pipeline {
         });
 
         vk_types::Pipeline graphics_pipeline_bundle = {};
-        graphics_pipeline_bundle.descriptors = descriptor_set;
+        graphics_pipeline_bundle.descriptors = descriptor_sets;
         graphics_pipeline_bundle.handle = graphics_pipeline;
         graphics_pipeline_bundle.layout = pipeline_layout;
         graphics_pipeline_bundle.bind_point = VK_PIPELINE_BIND_POINT_GRAPHICS;
@@ -189,7 +189,7 @@ namespace vk_pipeline {
     }
 
     // Creates a compute pipeline with the specified compute shader
-    vk_types::Pipeline init_compute_pipeline(const VkDevice device, const VkPipelineLayout compute_pipeline_layout, const VkShaderModule shader_module, const VkDescriptorSet descriptor_set, vk_types::CleanupProcedures& cleanup_procedures) {
+    vk_types::Pipeline init_compute_pipeline(const VkDevice device, const VkPipelineLayout compute_pipeline_layout, const VkShaderModule shader_module, const std::vector<VkDescriptorSet> descriptor_sets, vk_types::CleanupProcedures& cleanup_procedures) {
         VkPipelineShaderStageCreateInfo stage_info = make_shader_stage_info(VK_SHADER_STAGE_COMPUTE_BIT, shader_module);
 
         VkComputePipelineCreateInfo compute_pipeline_info{};
@@ -212,7 +212,7 @@ namespace vk_pipeline {
         pipeline.bind_point = VK_PIPELINE_BIND_POINT_COMPUTE;
         pipeline.handle = compute_pipeline;
         pipeline.layout = compute_pipeline_layout;
-        pipeline.descriptors = descriptor_set;
+        pipeline.descriptors = descriptor_sets;
 
         return pipeline;
     }
