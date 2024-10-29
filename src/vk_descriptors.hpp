@@ -13,6 +13,8 @@ namespace vk_descriptors {
     enum class DescriptorType : uint32_t {
         Uniform = VK_DESCRIPTOR_TYPE_UNIFORM_BUFFER,
         Storage = VK_DESCRIPTOR_TYPE_STORAGE_BUFFER,
+        SampledImage = VK_DESCRIPTOR_TYPE_SAMPLED_IMAGE,
+        CombinedImageSampler = VK_DESCRIPTOR_TYPE_COMBINED_IMAGE_SAMPLER,
         // Add more descriptor types as needed
     };
 
@@ -36,6 +38,9 @@ namespace vk_descriptors {
 
     // Function to initialize image descriptors
     VkDescriptorSet init_image_descriptors(const VkDevice device, const VkImageView image_view, const VkDescriptorSetLayout descriptor_layout, DescriptorAllocator& descriptor_allocator, vk_types::CleanupProcedures& cleanup_procedures);
+
+    // Function to initialize combine image sampler descriptors
+    VkDescriptorSet init_combined_image_sampler_descriptors(const VkDevice device, const VkImageView image_view, const VkSampler sampler, const VkDescriptorSetLayout descriptor_layout, DescriptorAllocator& descriptor_allocator, vk_types::CleanupProcedures& cleanup_procedures);
 
     // Function to initialize buffer descriptors
     VkDescriptorSet init_buffer_descriptors(const VkDevice device, const VkBuffer buffer, DescriptorType buffer_type, const VkDescriptorSetLayout descriptor_layout, DescriptorAllocator& descriptor_allocator, vk_types::CleanupProcedures& cleanup_procedures);

@@ -95,7 +95,7 @@ namespace vk_types{
         VkPipeline handle;
         VkPipelineLayout layout;
         VkPipelineBindPoint bind_point;
-        std::vector<VkDescriptorSet> descriptors;
+        std::vector<VkDescriptorSet> core_descriptors; // TODO: deprecate this, no inherent descriptors for a pipeline
     };
 
     struct Synchronization {

@@ -117,6 +117,44 @@ namespace vk_descriptors {
         return draw_descriptors;
     }
 
+    // Function to initialize combined image sampler descriptors
+    VkDescriptorSet init_combined_image_sampler_descriptors(const VkDevice device, const VkImageView image_view, const VkSampler sampler, const VkDescriptorSetLayout descriptor_layout, DescriptorAllocator& descriptor_allocator, vk_types::CleanupProcedures& cleanup_procedures) {
+
+        // Create a descriptor pool that will hold 10 sets with 1 combined image sampler each
+        std::vector<DescriptorAllocator::PoolSizeRatio> sizes =
+        {
+            {VK_DESCRIPTOR_TYPE_COMBINED_IMAGE_SAMPLER, 1}
+        };
+
+        descriptor_allocator.init_pool(device, 10, sizes);
+
+        // Allocate a descriptor set for our draw image
+        VkDescriptorSet draw_descriptors = descriptor_allocator.allocate(device, descriptor_layout);
+
+        VkDescriptorImageInfo img_info{};
+        img_info.imageLayout = VK_IMAGE_LAYOUT_SHADER_READ_ONLY_OPTIMAL;
+        img_info.imageView = image_view;
+        img_info.sampler = sampler;
+
+        VkWriteDescriptorSet draw_image_write = {};
+        draw_image_write.sType = VK_STRUCTURE_TYPE_WRITE_DESCRIPTOR_SET;
+        draw_image_write.pNext = nullptr;
+
+        draw_image_write.dstBinding = 0;
+        draw_image_write.dstSet = draw_descriptors;
+        draw_image_write.descriptorCount = 1;
+        draw_image_write.descriptorType = VK_DESCRIPTOR_TYPE_COMBINED_IMAGE_SAMPLER;
+        draw_image_write.pImageInfo = &img_info;
+
+        vkUpdateDescriptorSets(device, 1, &draw_image_write, 0, nullptr);
+
+        cleanup_procedures.add([device, descriptor_allocator]() mutable {
+            descriptor_allocator.destroy_pool(device);
+        });
+
+        return draw_descriptors;
+    }
+
     // Function to initialize buffer descriptors
     VkDescriptorSet init_buffer_descriptors(const VkDevice device, const VkBuffer buffer, DescriptorType buffer_type, const VkDescriptorSetLayout descriptor_layout, DescriptorAllocator& descriptor_allocator, vk_types::CleanupProcedures& cleanup_procedures) {
 

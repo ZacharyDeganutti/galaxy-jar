@@ -119,11 +119,11 @@ namespace vk_layer {
 
         void draw_background(const VkCommandBuffer cmd, const vk_types::AllocatedImage& background_target, const vk_types::Pipeline& pipeline, const DrawState& state) {
             vkCmdBindPipeline(cmd, pipeline.bind_point, pipeline.handle);
-            vkCmdBindDescriptorSets(cmd, pipeline.bind_point, pipeline.layout, 0, pipeline.descriptors.size(), pipeline.descriptors.data(), 0, nullptr);
+            vkCmdBindDescriptorSets(cmd, pipeline.bind_point, pipeline.layout, 0, pipeline.core_descriptors.size(), pipeline.core_descriptors.data(), 0, nullptr);
             vkCmdDispatch(cmd, std::ceil(background_target.image_extent.width / 16.0), std::ceil(background_target.image_extent.height / 16.0), 1);
         }
 
-        void draw_geometry(const VkCommandBuffer cmd, const vk_types::AllocatedImage& draw_target, const vk_types::AllocatedImage& depth_buffer, const vk_types::Pipeline& pipeline, const std::vector<vk_types::GpuMeshBuffers>& buffers, const DrawState& state) {
+        void draw_geometry(const VkCommandBuffer cmd, const vk_types::AllocatedImage& draw_target, const vk_types::AllocatedImage& depth_buffer, const vk_types::Pipeline& pipeline, const geometry::GpuModel& drawable, const DrawState& state) {
             //begin a render pass  connected to our draw image
 
             // Set up draw target attachment
@@ -165,7 +165,6 @@ namespace vk_layer {
             vkCmdBeginRendering(cmd, &render_info);
 
             vkCmdBindPipeline(cmd, VK_PIPELINE_BIND_POINT_GRAPHICS, pipeline.handle);
-            vkCmdBindDescriptorSets(cmd, pipeline.bind_point, pipeline.layout, 0, pipeline.descriptors.size(), pipeline.descriptors.data(), 0, nullptr);
 
             //set dynamic viewport and scissor
             VkViewport viewport = {};
@@ -191,7 +190,13 @@ namespace vk_layer {
             clear_attachments(cmd, attachments, extents);
             
             // Draw all buffers
-            for (auto& buffer_group: buffers) {
+            for (int piece = 0; piece < drawable.vertex_buffers.size(); ++piece) {
+                // Bind up the descriptors to match each piece
+                std::vector<VkDescriptorSet> graphics_descriptor_sets = { state.buffers.modelview_descriptor_set, state.buffers.brightness_descriptor_set, drawable.diffuse_texture_descriptors[piece] };
+                vkCmdBindDescriptorSets(cmd, pipeline.bind_point, pipeline.layout, 0, graphics_descriptor_sets.size(), graphics_descriptor_sets.data(), 0, nullptr);
+
+                // Bind the vertex buffers and fire off an indexed draw
+                const vk_types::GpuMeshBuffers& buffer_group = drawable.vertex_buffers[piece];
                 vkCmdBindIndexBuffer(cmd, buffer_group.index_buffer.buffer, 0, VK_INDEX_TYPE_UINT32);
                 std::array<VkBuffer, 3> buffer_handles {{
                     buffer_group.position_buffer.vertex_buffer.buffer,
@@ -252,7 +257,7 @@ namespace vk_layer {
         }
     }
     
-    RenderResources build_render_resources(vk_types::Context& context, vk_types::CleanupProcedures& lifetime) {
+    Pipelines build_pipelines(vk_types::Context& context, const std::vector<VkDescriptorSetLayout>& graphics_descriptor_layouts, vk_types::CleanupProcedures& lifetime) {
         // Setup descriptors for compute pipeline
         vk_descriptors::DescriptorAllocator descriptor_allocator = {};
         std::vector<VkDescriptorType> compute_descriptor_types = { VK_DESCRIPTOR_TYPE_STORAGE_IMAGE };
@@ -265,7 +270,24 @@ namespace vk_layer {
         VkPipelineLayout compute_pipeline_layout = vk_pipeline::init_pipeline_layout(context.device, compute_descriptor_set_layouts, lifetime);
         vk_types::Pipeline compute_pipeline = vk_pipeline::init_compute_pipeline(context.device, compute_pipeline_layout, compute_shader, { compute_descriptor_set }, lifetime);
 
+        // Assemble the graphics pipeline
+        VkShaderModule vert_shader = vk_pipeline::init_shader_module(context.device, "../../../src/shaders/colored_triangle.glsl.vert.spv", lifetime);
+        VkShaderModule frag_shader = vk_pipeline::init_shader_module(context.device, "../../../src/shaders/colored_triangle.glsl.frag.spv", lifetime);
+        
+        VkPipelineLayout graphics_pipeline_layout = vk_pipeline::init_pipeline_layout(context.device, graphics_descriptor_layouts, lifetime);
+        vk_types::Pipeline graphics_pipeline = vk_pipeline::init_graphics_pipeline(context.device, graphics_pipeline_layout, context.draw_target.image_format, context.depth_buffer.image_format, vert_shader, frag_shader, { }, lifetime);
+
+        Pipelines pipes =  Pipelines {
+            .graphics = graphics_pipeline,
+            .compute = compute_pipeline,
+        };
+
+        return pipes;
+    }
+
+    FreeBuffers build_free_buffers(vk_types::Context& context, vk_types::CleanupProcedures& lifetime) {
         // Setup descriptors for graphics pipeline
+        vk_descriptors::DescriptorAllocator descriptor_allocator = {};
         vk_types::PersistentUniformBuffer<glm::mat4> modelview_ubo = vk_buffer::create_persistent_mapped_uniform_buffer<glm::mat4>(context);
         vk_types::PersistentUniformBuffer<glm::vec4> brightness_ubo = vk_buffer::create_persistent_mapped_uniform_buffer<glm::vec4>(context);
         modelview_ubo = modelview_ubo.update(glm::mat4(1.0f));
@@ -275,31 +297,21 @@ namespace vk_layer {
         VkDescriptorSet graphics_modelview_descriptor_set = vk_descriptors::init_buffer_descriptors(context.device, modelview_ubo.buffer_resource.buffer, vk_descriptors::DescriptorType::Uniform, graphics_ubo_descriptor_layout, descriptor_allocator, lifetime);
         VkDescriptorSet graphics_brightness_descriptor_set = vk_descriptors::init_buffer_descriptors(context.device, brightness_ubo.buffer_resource.buffer, vk_descriptors::DescriptorType::Uniform, graphics_ubo_descriptor_layout, descriptor_allocator, lifetime);
 
-        // Assemble the graphics pipeline
-        VkShaderModule vert_shader = vk_pipeline::init_shader_module(context.device, "../../../src/shaders/colored_triangle.glsl.vert.spv", lifetime);
-        VkShaderModule frag_shader = vk_pipeline::init_shader_module(context.device, "../../../src/shaders/colored_triangle.glsl.frag.spv", lifetime);
-        
         std::vector<VkDescriptorSetLayout> graphics_pipeline_layout_set = { graphics_ubo_descriptor_layout, graphics_ubo_descriptor_layout };
-        VkPipelineLayout graphics_pipeline_layout = vk_pipeline::init_pipeline_layout(context.device, graphics_pipeline_layout_set, lifetime);
-        vk_types::Pipeline graphics_pipeline = vk_pipeline::init_graphics_pipeline(context.device, graphics_pipeline_layout, context.draw_target.image_format, context.depth_buffer.image_format, vert_shader, frag_shader, { graphics_modelview_descriptor_set, graphics_brightness_descriptor_set }, lifetime);
 
-        Pipelines pipes =  Pipelines {
-            .graphics = graphics_pipeline,
-            .compute = compute_pipeline,
+        FreeBuffers free_buffers = FreeBuffers {
+            modelview_ubo,
+            graphics_ubo_descriptor_layout,
+            graphics_modelview_descriptor_set,
+            brightness_ubo,
+            graphics_ubo_descriptor_layout,
+            graphics_brightness_descriptor_set,
         };
 
-        Buffers buffers = Buffers {
-            .modelview_ubo = modelview_ubo,
-            .brightness_ubo = brightness_ubo,
-        };
-
-        return RenderResources {
-            .pipelines = pipes,
-            .buffers = buffers,
-        };
+        return free_buffers;
     }
 
-    DrawState draw(const vk_types::Context& vk_res, const Pipelines& pipelines, const std::vector<vk_types::GpuMeshBuffers>& buffers, const DrawState& state) {
+    DrawState draw(const vk_types::Context& vk_res, const Pipelines& pipelines, const std::vector<geometry::GpuModel>& drawables, const DrawState& state) {
         // Wait for previous frame to finish drawing (if applicable). Timeout 1s
         if (state.not_first_frame) {
             uint32_t prior_frame = (state.buf_num + (vk_res.buffer_count - 1)) % vk_res.buffer_count;
@@ -363,7 +375,9 @@ namespace vk_layer {
 
         vk_image::transition_image(cmd, vk_res.draw_target.image, VK_IMAGE_LAYOUT_GENERAL, VK_IMAGE_LAYOUT_COLOR_ATTACHMENT_OPTIMAL);
 
-        draw_geometry(cmd, vk_res.draw_target, vk_res.depth_buffer, pipelines.graphics, buffers, state);
+        for (auto& drawable : drawables) {
+            draw_geometry(cmd, vk_res.draw_target, vk_res.depth_buffer, pipelines.graphics, drawable, state);
+        }
 
         // Transfer from the draw target to the swapchain
         vk_image::transition_image(cmd, vk_res.draw_target.image, VK_IMAGE_LAYOUT_COLOR_ATTACHMENT_OPTIMAL, VK_IMAGE_LAYOUT_TRANSFER_SRC_OPTIMAL);
@@ -414,10 +428,10 @@ namespace vk_layer {
         /// Update state ///
         glm::mat4 rotated_modelview = glm::rotate(*state.buffers.modelview_ubo.buffer_view, glm::radians(0.01f), glm::vec3(0.0f, 1.0f, 0.0f));
         glm::vec4 current_brightness = glm::vec4(glm::vec3(glm::sin(glm::radians(((float)state.frame_num) / 200.0f))), 1.0f);
-        Buffers updated_buffers = Buffers {
-            .modelview_ubo = state.buffers.modelview_ubo.update(rotated_modelview),
-            .brightness_ubo = state.buffers.brightness_ubo.update(current_brightness),
-        };
+        FreeBuffers updated_buffers = state.buffers;
+        updated_buffers.modelview_ubo = state.buffers.modelview_ubo.update(rotated_modelview);
+        updated_buffers.brightness_ubo = state.buffers.brightness_ubo.update(current_brightness);
+
         return DrawState {
             .not_first_frame = true,
             .buf_num = static_cast<uint8_t>((state.buf_num + 1u) % vk_res.buffer_count),

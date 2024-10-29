@@ -2,6 +2,7 @@
 
 #include "geometry.hpp"
 #include "tiny_obj_loader.h"
+#include "vk_buffer.hpp"
 
 #include <algorithm>
 #include <deque>
@@ -146,7 +147,9 @@ namespace geometry {
 
                 // Either way, add the index associated with the vertex to the processed piece's index buffer
                 processed_piece_vector[piece_idx].indices.push_back(vertex_pair.second);
+                // processed_piece_vector[piece_idx].material_index = current_piece.material_index;
             }
+            processed_piece_vector[piece_idx].material_index = current_piece.material_index;
         }
 
         // Dump the unique vertices into a buffer and sort it on the associated index so that they match the order expected by the piece index buffers
@@ -175,7 +178,7 @@ namespace geometry {
         return indexed_data;
     }
 
-    Model load_obj_model(std::string file_name, std::string base_path) {
+    HostModel load_obj_model(std::string file_name, std::string base_path) {
         tinyobj::attrib_t attrib = {};
         std::vector<tinyobj::shape_t> shapes;
         std::vector<tinyobj::material_t> materials;
@@ -210,9 +213,89 @@ namespace geometry {
         auto raw_pieces = make_pieces(shapes);
         IndexedVertexData indexed_geometry = reindex_pieces(raw_pieces, raw_positions, raw_normals, raw_texture_coordinates);
 
-        Model model = {};
+        HostModel model = {};
         model.vertex_attributes = indexed_geometry;
-        // TODO: define materials
+
+        // Extract material data we care about from pieces
+        std::vector<std::optional<vk_image::HostImageRgba>> diffuse_textures;
+        diffuse_textures.resize(indexed_geometry.pieces.size());
+
+        std::vector<MaterialProperties> material_properties;
+        material_properties.resize(indexed_geometry.pieces.size());
+
+        for (auto& piece : indexed_geometry.pieces) {
+            int32_t material_index = piece.material_index;
+            auto& diffuse = materials[material_index].diffuse;
+            material_properties[material_index].diffuse = glm::vec4(diffuse[0], diffuse[1], diffuse[2], 1.0f);
+            std::string diffuse_texname = materials[material_index].diffuse_texname;
+            if (diffuse_texname.empty()) {
+                diffuse_textures[material_index] = std::nullopt;
+            } else {
+                diffuse_textures[material_index] = vk_image::load_rgba_image(base_path + "/" + diffuse_texname);
+            }
+        }
+
+        model.materials = material_properties;
+        model.diffuse_textures = diffuse_textures;
+
         return model;
+    }
+
+    GpuModel upload_model(vk_types::Context& context, const HostModel& host_model) {
+        std::vector<vk_types::GpuMeshBuffers> mesh_resources = vk_buffer::create_mesh_buffers(context, host_model);
+
+        const std::vector<VkDescriptorType> texture_descriptor_types = {VK_DESCRIPTOR_TYPE_COMBINED_IMAGE_SAMPLER};
+        VkDescriptorSetLayout texture_layout = vk_descriptors::init_descriptor_layout(context.device, VK_SHADER_STAGE_ALL_GRAPHICS, texture_descriptor_types, context.cleanup_procedures);
+
+        // Upload textures for all materials
+        VkSampler diffuse_texture_sampler = vk_image::init_linear_sampler(context);
+        std::vector<VkDescriptorSet> diffuse_texture_descriptors;
+        diffuse_texture_descriptors.reserve(host_model.diffuse_textures.size());
+        // for (auto& diffuse_texture : host_model.diffuse_textures) {
+        for (auto& piece : host_model.vertex_attributes.pieces) {
+            auto& diffuse_texture = host_model.diffuse_textures[piece.material_index];
+            vk_types::AllocatedImage diffuse_texture_image = {};
+            if (diffuse_texture.has_value()) {
+                diffuse_texture_image = vk_image::upload_rgba_image(context, diffuse_texture.value(), VK_IMAGE_LAYOUT_SHADER_READ_ONLY_OPTIMAL);
+            } else {
+                // TODO: Make texture fallback common so we don't need tons of random little 1 pixel image allocations.
+                // Make a white texture that samples a value of 1.0 for all channels so it acts as a passthrough when multiplying against diffuse parameters.
+                vk_image::HostImageRgba white_pixel_texture = vk_image::HostImageRgba{
+                    .image = vk_image::HostImage {
+                        .width = 1,
+                        .height = 1,
+                        .data = {255, 255, 255, 255}  // RGBA: Full brightness white
+                    }
+                };
+                diffuse_texture_image = vk_image::upload_rgba_image(context, white_pixel_texture, VK_IMAGE_LAYOUT_SHADER_READ_ONLY_OPTIMAL);
+            }
+            vk_descriptors::DescriptorAllocator descriptor_allocator = {};
+            VkDescriptorSet diffuse_texture_descriptor = vk_descriptors::init_combined_image_sampler_descriptors(context.device,
+                diffuse_texture_image.image_view,
+                diffuse_texture_sampler,
+                texture_layout,
+                descriptor_allocator,
+                context.cleanup_procedures);
+            
+            diffuse_texture_descriptors.push_back(diffuse_texture_descriptor);
+        }
+
+        // Upload material properties for all materials
+        std::vector<vk_types::PersistentUniformBuffer<MaterialProperties>> material_buffers;
+        material_buffers.reserve(host_model.materials.size());
+        for (auto& material_properties : host_model.materials) {
+            vk_types::PersistentUniformBuffer<MaterialProperties> material_properties_buffer = vk_buffer::create_persistent_mapped_uniform_buffer<MaterialProperties>(context);
+            material_properties_buffer.update(material_properties);
+            material_buffers.push_back(material_properties_buffer);
+        }
+
+        GpuModel gpu_model = {
+            mesh_resources,
+            material_buffers,
+            texture_layout,
+            diffuse_texture_descriptors
+        };
+
+        return gpu_model;
     }
 }

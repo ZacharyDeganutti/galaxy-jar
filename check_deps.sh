@@ -25,4 +25,9 @@ if [ ! -f external/glm/glm.hpp ]; then
     exit 1;
 fi
 
+if [ ! -f external/stb/stb_image.h ]; then
+   echo "stb_image not found, run 'make download'";
+   exit 1;
+fi
+
 exit 0;

@@ -20,3 +20,8 @@ mv tiny_obj_loader.h tinyobjloader
 # Get GLM 1.0.1 from github and extract it
 curl -LO "https://github.com/g-truc/glm/releases/download/1.0.1/glm-1.0.1-light.zip"
 unzip -o glm-1.0.1-light.zip > /dev/null
+
+# Get STB from github and extract it
+curl -LO "https://github.com/nothings/stb/archive/2e2bef463a5b53ddf8bb788e25da6b8506314c08.zip"
+unzip -o 2e2bef463a5b53ddf8bb788e25da6b8506314c08.zip > /dev/null
+mv stb-2e2bef463a5b53ddf8bb788e25da6b8506314c08 stb

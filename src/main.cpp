@@ -13,7 +13,7 @@ int main() {
     glfwInit();
 
     glfwWindowHint(GLFW_CLIENT_API, GLFW_NO_API);
-    GLFWwindow* window = glfwCreateWindow(800, 600, "Galaxy Jar", nullptr, nullptr);
+    GLFWwindow* window = glfwCreateWindow(1600, 1200, "Galaxy Jar", nullptr, nullptr);
 
     // Query glfw extensions
     uint32_t extensionCount = 0;
@@ -33,20 +33,31 @@ int main() {
     vk_types::Context context = vk_init::init(required_device_extensions, glfw_extensions, window);
     
     // Load other resources
-    geometry::Model dummy_model = geometry::load_obj_model("sponza.obj", "../../../assets/sponza/");
-    std::vector<vk_types::GpuMeshBuffers> mesh_resources = vk_buffer::create_mesh_buffers(context, dummy_model);
-    vk_layer::RenderResources render_resources = vk_layer::build_render_resources(context, context.cleanup_procedures);
+    geometry::HostModel dummy_model = geometry::load_obj_model("sponza.obj", "../../../assets/sponza/");
+    // std::vector<vk_types::GpuMeshBuffers> mesh_resources = vk_buffer::create_mesh_buffers(context, dummy_model);
+    geometry::GpuModel dummy_gpu_model = geometry::upload_model(context, dummy_model);
+
+    std::vector<geometry::GpuModel> drawables = {dummy_gpu_model};
+
+    vk_layer::FreeBuffers free_buffers = vk_layer::build_free_buffers(context, context.cleanup_procedures);
+    std::vector<VkDescriptorSetLayout> descriptor_set_layouts = { 
+        free_buffers.modelview_descriptor_set_layout,
+        free_buffers.brightness_descriptor_set_layout,
+        drawables[0].texture_layout, // TODO: All of the drawables have a shared layout, consider finding a cleaner way to model this
+    };
+
+    vk_layer::Pipelines pipelines = vk_layer::build_pipelines(context, descriptor_set_layouts, context.cleanup_procedures);
 
     vk_layer::DrawState draw_state = {
         .not_first_frame = false,
         .buf_num = 0,
         .frame_num = 0,
-        .buffers = render_resources.buffers,
+        .buffers = free_buffers,
     };
     
     while(!glfwWindowShouldClose(window)) {
         glfwPollEvents();
-        draw_state = vk_layer::draw(context, render_resources.pipelines, mesh_resources, draw_state);
+        draw_state = vk_layer::draw(context, pipelines, drawables, draw_state);
     }
 
     vk_layer::cleanup(context, context.cleanup_procedures);

@@ -2,7 +2,10 @@
 #define GEOMETRY_H_
 #include <vector>
 #include <string>
+#include <optional>
 #include "glmvk.hpp"
+#include "vk_descriptors.hpp"
+#include "vk_image.hpp"
 #include "vk_types.hpp"
 
 namespace geometry {
@@ -12,7 +15,8 @@ namespace geometry {
         glm::vec2 texture_coordinate;
     };
 
-    struct Material {
+    struct MaterialProperties {
+        glm::vec4 diffuse;
     };
 
     struct Piece {
@@ -27,17 +31,24 @@ namespace geometry {
         std::vector<Piece> pieces;
     };
 
-    struct Model {
+    struct HostModel {
         IndexedVertexData vertex_attributes;
-        std::vector<Material> materials;
+        std::vector<MaterialProperties> materials;
+        std::vector<std::optional<vk_image::HostImageRgba>> diffuse_textures;
     };
 
     struct GpuModel {
-        std::vector<vk_types::GpuMeshBuffers> vertex_attributes;
+        std::vector<vk_types::GpuMeshBuffers> vertex_buffers;
+        std::vector<vk_types::PersistentUniformBuffer<MaterialProperties>> material_buffers;
+        // std::vector<vk_types::AllocatedImage> diffuse_textures;
+        VkDescriptorSetLayout texture_layout;
+        std::vector<VkDescriptorSet> diffuse_texture_descriptors;
     };
 
     // Accepts a file name, and a path to search for the file and corresponding material as arguments
     // May throw an exception on failure
-    Model load_obj_model(std::string file_name, std::string base_path);
+    HostModel load_obj_model(std::string file_name, std::string base_path);
+
+    GpuModel upload_model(vk_types::Context& context, const HostModel& host_model);
 }
 #endif

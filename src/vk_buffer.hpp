@@ -9,10 +9,10 @@ namespace vk_buffer {
     vk_types::AllocatedBuffer create_buffer(const VmaAllocator allocator, const size_t alloc_size, const VkBufferUsageFlags usage, const VmaMemoryUsage memory_usage, vk_types::CleanupProcedures& cleanup_procedures);
     
     // Uploads model data to the GPU with a lifetime matching that of the context
-    std::vector<vk_types::GpuMeshBuffers> create_mesh_buffers(vk_types::Context& context, geometry::Model model);
+    std::vector<vk_types::GpuMeshBuffers> create_mesh_buffers(vk_types::Context& context, geometry::HostModel model);
 
     // Uploads model data to the GPU with a custom lifetime
-    std::vector<vk_types::GpuMeshBuffers> create_mesh_buffers(vk_types::Context& context, geometry::Model model, vk_types::CleanupProcedures& custom_lifetime);
+    std::vector<vk_types::GpuMeshBuffers> create_mesh_buffers(vk_types::Context& context, geometry::HostModel model, vk_types::CleanupProcedures& custom_lifetime);
 
     // Creates a uniform buffer with data of type T that is mapped until the provided lifetime is cleaned up
     template <class T>

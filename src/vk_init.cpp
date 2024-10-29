@@ -1,3 +1,4 @@
+#include "vk_image.hpp"
 #include "vk_init.hpp"
 #include "vk_descriptors.hpp"
 #include "vk_buffer.hpp"
@@ -49,8 +50,6 @@ namespace vk_init {
     VkSurfaceFormatKHR choose_swapchain_surface_format(const std::vector<VkSurfaceFormatKHR>& format_list);
     VkPresentModeKHR choose_swapchain_present_mode(const std::vector<VkPresentModeKHR>& mode_list);
     VkExtent2D choose_swapchain_extent(const VkSurfaceCapabilitiesKHR& capabilities, const uint32_t width, const uint32_t height);
-    VkImageView init_image_view(const VkDevice device, const VkImage image, const VkFormat format, vk_types::CleanupProcedures& cleanup_procedures);
-    vk_types::AllocatedImage init_allocated_image(const VkDevice device, const VmaAllocator allocator, const VkFormat format, const VkImageUsageFlags usage_flags, const VkExtent2D extent, vk_types::CleanupProcedures& cleanup_procedures);
     vk_types::Swapchain init_swapchain(const VkDevice device, const GpuAndQueueInfo& gpu_info, const VkSurfaceKHR surface, const uint32_t width, const uint32_t height, vk_types::CleanupProcedures& cleanup_procedures);
     std::vector<vk_types::Command> init_command(const VkDevice device, const GpuAndQueueInfo& gpu, const uint8_t buffer_count, vk_types::CleanupProcedures& cleanup_procedures);
     std::vector<vk_types::Synchronization> init_synchronization(const VkDevice device, const uint8_t buffer_count, vk_types::CleanupProcedures& cleanup_procedures);
@@ -350,6 +349,7 @@ namespace vk_init {
 
         // Do the janky Vulkan 1.2 + 1.3 features enabling song and dance
         VkPhysicalDeviceFeatures device_features{};
+        device_features.samplerAnisotropy = VK_TRUE;
         VkPhysicalDeviceVulkan13Features features13 = {};
         features13.sType = VK_STRUCTURE_TYPE_PHYSICAL_DEVICE_VULKAN_1_3_FEATURES;
         features13.dynamicRendering = VK_TRUE;
@@ -454,81 +454,6 @@ namespace vk_init {
         }
     }
 
-    VkImageView init_image_view(const VkDevice device, const VkImage image, const VkFormat format, vk_types::CleanupProcedures& cleanup_procedures) {
-        VkImageView image_view = {};
-
-        VkImageViewCreateInfo image_view_create_info{};
-        image_view_create_info.sType = VK_STRUCTURE_TYPE_IMAGE_VIEW_CREATE_INFO;
-        image_view_create_info.image = image;
-        image_view_create_info.viewType = VK_IMAGE_VIEW_TYPE_2D;
-        image_view_create_info.format = format;
-        image_view_create_info.components.r = VK_COMPONENT_SWIZZLE_IDENTITY;
-        image_view_create_info.components.g = VK_COMPONENT_SWIZZLE_IDENTITY;
-        image_view_create_info.components.b = VK_COMPONENT_SWIZZLE_IDENTITY;
-        image_view_create_info.components.a = VK_COMPONENT_SWIZZLE_IDENTITY;
-        image_view_create_info.subresourceRange.aspectMask = (format >= VK_FORMAT_D16_UNORM) && (format <= VK_FORMAT_D32_SFLOAT_S8_UINT) ? VK_IMAGE_ASPECT_DEPTH_BIT : VK_IMAGE_ASPECT_COLOR_BIT;
-        image_view_create_info.subresourceRange.baseMipLevel = 0;
-        image_view_create_info.subresourceRange.levelCount = 1;
-        image_view_create_info.subresourceRange.baseArrayLayer = 0;
-        image_view_create_info.subresourceRange.layerCount = 1;
-
-        if (vkCreateImageView(device, &image_view_create_info, nullptr, &image_view) != VK_SUCCESS) {
-            printf("Unable to create image view");
-            exit(EXIT_FAILURE);
-        }
-
-        cleanup_procedures.add([device, image_view]() {
-            vkDestroyImageView(device, image_view, nullptr);
-        });
-
-        return image_view;
-    }
-    
-    vk_types::AllocatedImage init_allocated_image(const VkDevice device, const VmaAllocator allocator, const VkFormat format, const VkImageUsageFlags usage_flags, const VkExtent2D extent, vk_types::CleanupProcedures& cleanup_procedures) {
-        // Setup image specification
-        VkImageCreateInfo image_info = {};
-        image_info.sType = VK_STRUCTURE_TYPE_IMAGE_CREATE_INFO;
-        image_info.pNext = nullptr;
-
-        image_info.imageType = VK_IMAGE_TYPE_2D;
-
-        image_info.format = format;
-        image_info.extent = {extent.width, extent.height, 1};
-
-        image_info.mipLevels = 1;
-        image_info.arrayLayers = 1;
-
-        image_info.samples = VK_SAMPLE_COUNT_1_BIT;
-
-        image_info.tiling = VK_IMAGE_TILING_OPTIMAL;
-        image_info.usage = usage_flags;
-
-        // Setup allocation specification
-        VmaAllocationCreateInfo alloc_info = {};
-        alloc_info.usage = VMA_MEMORY_USAGE_GPU_ONLY;
-        alloc_info.requiredFlags = VkMemoryPropertyFlags(VK_MEMORY_PROPERTY_DEVICE_LOCAL_BIT);
-
-        VkImage image = {};
-        VmaAllocation allocation = {};
-        vmaCreateImage(allocator, &image_info, &alloc_info, &image, &allocation, nullptr);
-
-        // Specify cleanup for the VkImage here because the image is created prior to its VkImageView and we want cleanup in the right order
-        // since init_image_view handles its own cleanup
-        cleanup_procedures.add([allocator, image, allocation]() {
-            vmaDestroyImage(allocator, image, allocation);
-        });
-
-        VkImageView view = init_image_view(device, image, format, cleanup_procedures);
-        vk_types::AllocatedImage allocated_image = {};
-        allocated_image.allocation = allocation;
-        allocated_image.image = image;
-        allocated_image.image_extent = extent;
-        allocated_image.image_format = format;
-        allocated_image.image_view = view;
-
-        return allocated_image;
-    }
-
     vk_types::Swapchain init_swapchain(const VkDevice device, const GpuAndQueueInfo& gpu_info, const VkSurfaceKHR surface, const uint32_t width, const uint32_t height, vk_types::CleanupProcedures& cleanup_procedures) {
         SwapchainSupportDetails swapchain_support = query_swapchain_support(gpu_info.gpu, surface);
 
@@ -591,7 +516,7 @@ namespace vk_init {
         // std::vector<VkImageView> swapchain_views = init_image_views(device, swapchain_images, surface_format.format);
         std::vector<VkImageView> swapchain_views(swapchain_images.size());
         for (auto swapchain_image : swapchain_images) {
-            VkImageView view = init_image_view(device, swapchain_image, surface_format.format, cleanup_procedures);
+            VkImageView view = vk_image::init_image_view(device, swapchain_image, surface_format.format, cleanup_procedures);
             swapchain_views.push_back(view);
         }
 
@@ -757,7 +682,7 @@ namespace vk_init {
             swapchain.extent.height
         };
 
-        vk_types::AllocatedImage draw_target = init_allocated_image(vulkan_device, allocator, draw_target_format, draw_target_flags, draw_target_extent, cleanup_procedures);
+        vk_types::AllocatedImage draw_target = vk_image::init_allocated_image(vulkan_device, allocator, draw_target_format, draw_target_flags, draw_target_extent, cleanup_procedures);
 
         // Allocate a depth target as well
         // TODO: make more robust format checks
@@ -771,7 +696,7 @@ namespace vk_init {
             swapchain.extent.height
         };
 
-        vk_types::AllocatedImage depth_buffer = init_allocated_image(vulkan_device, allocator, depth_buffer_format, depth_buffer_flags, depth_buffer_extent, cleanup_procedures);
+        vk_types::AllocatedImage depth_buffer = vk_image::init_allocated_image(vulkan_device, allocator, depth_buffer_format, depth_buffer_flags, depth_buffer_extent, cleanup_procedures);
 
         return vk_types::Context {
             cleanup_procedures,

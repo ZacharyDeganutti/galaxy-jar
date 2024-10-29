@@ -74,7 +74,7 @@ namespace vk_buffer {
         return index_buffer;
     }
 
-    std::vector<vk_types::GpuMeshBuffers> create_mesh_buffers(vk_types::Context& context, geometry::Model model, vk_types::CleanupProcedures& custom_lifetime) {
+    std::vector<vk_types::GpuMeshBuffers> create_mesh_buffers(vk_types::Context& context, geometry::HostModel model, vk_types::CleanupProcedures& custom_lifetime) {
         std::vector<vk_types::GpuMeshBuffers> model_meshes;
         model_meshes.reserve(model.vertex_attributes.pieces.size());
 
@@ -90,7 +90,7 @@ namespace vk_buffer {
         return model_meshes;
     }
 
-    std::vector<vk_types::GpuMeshBuffers> create_mesh_buffers(vk_types::Context& context, geometry::Model model) {
+    std::vector<vk_types::GpuMeshBuffers> create_mesh_buffers(vk_types::Context& context, geometry::HostModel model) {
         return create_mesh_buffers(context, model, context.cleanup_procedures);
     }
 }

@@ -12,13 +12,19 @@
 
 #include "vk_types.hpp"
 #include "vk_buffer.hpp"
+#include "geometry.hpp"
 #include "glmvk.hpp"
 
 namespace vk_layer
 {
-    struct Buffers {
+    struct FreeBuffers {
         vk_types::PersistentUniformBuffer<glm::mat4> modelview_ubo;
+        VkDescriptorSetLayout modelview_descriptor_set_layout;
+        VkDescriptorSet modelview_descriptor_set;
+
         vk_types::PersistentUniformBuffer<glm::vec4> brightness_ubo;
+        VkDescriptorSetLayout brightness_descriptor_set_layout;
+        VkDescriptorSet brightness_descriptor_set;
     };
 
     struct Pipelines {
@@ -30,17 +36,13 @@ namespace vk_layer
         bool not_first_frame;
         uint8_t buf_num;
         uint64_t frame_num;
-        Buffers buffers;
+        FreeBuffers buffers;
     };
 
-    struct RenderResources {
-        Pipelines pipelines;
-        Buffers buffers;
-    };
-
-    RenderResources build_render_resources(vk_types::Context& context, vk_types::CleanupProcedures& lifetime);
+    Pipelines build_pipelines(vk_types::Context& context, const std::vector<VkDescriptorSetLayout>& graphics_descriptor_layouts, vk_types::CleanupProcedures& lifetime);
+    FreeBuffers build_free_buffers(vk_types::Context& context, vk_types::CleanupProcedures& lifetime);
     void immediate_submit(const vk_types::Context& res, std::function<void(VkCommandBuffer cmd)>&& function);
-    DrawState draw(const vk_types::Context& res, const Pipelines& pipelines, const std::vector<vk_types::GpuMeshBuffers>& buffers, const DrawState& state);
+    DrawState draw(const vk_types::Context& res, const Pipelines& pipelines, const std::vector<geometry::GpuModel>& drawables, const DrawState& state);
     void cleanup(vk_types::Context& resources, vk_types::CleanupProcedures& cleanup_procedures);
 } // namespace vk_layer
 

@@ -180,7 +180,7 @@ namespace vk_pipeline {
         });
 
         vk_types::Pipeline graphics_pipeline_bundle = {};
-        graphics_pipeline_bundle.descriptors = descriptor_sets;
+        graphics_pipeline_bundle.core_descriptors = descriptor_sets;
         graphics_pipeline_bundle.handle = graphics_pipeline;
         graphics_pipeline_bundle.layout = pipeline_layout;
         graphics_pipeline_bundle.bind_point = VK_PIPELINE_BIND_POINT_GRAPHICS;
@@ -212,7 +212,7 @@ namespace vk_pipeline {
         pipeline.bind_point = VK_PIPELINE_BIND_POINT_COMPUTE;
         pipeline.handle = compute_pipeline;
         pipeline.layout = compute_pipeline_layout;
-        pipeline.descriptors = descriptor_sets;
+        pipeline.core_descriptors = descriptor_sets;
 
         return pipeline;
     }
