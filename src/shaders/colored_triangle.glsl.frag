@@ -17,5 +17,9 @@ void main()
 {
 	//return normal
 	// frag_color = ubo.brightness * vec4((normalize(normal_interp) * 0.5f ) + 0.5f, 1.0);
-	frag_color = texture(diffuse_tex, tex_interp);
+	vec4 diffuse = texture(diffuse_tex, tex_interp);
+	if (diffuse.a < 0.1) {
+		discard;
+	}
+	frag_color = diffuse;
 }

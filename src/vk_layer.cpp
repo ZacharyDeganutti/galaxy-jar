@@ -382,7 +382,7 @@ namespace vk_layer {
         // Transfer from the draw target to the swapchain
         vk_image::transition_image(cmd, vk_res.draw_target.image, VK_IMAGE_LAYOUT_COLOR_ATTACHMENT_OPTIMAL, VK_IMAGE_LAYOUT_TRANSFER_SRC_OPTIMAL);
         vk_image::transition_image(cmd, vk_res.swapchain.images[swapchain_image_index], VK_IMAGE_LAYOUT_UNDEFINED, VK_IMAGE_LAYOUT_TRANSFER_DST_OPTIMAL);
-        vk_image::blit_image_to_image(cmd, vk_res.draw_target.image, vk_res.swapchain.images[swapchain_image_index], vk_res.draw_target.image_extent, vk_res.swapchain.extent);
+        vk_image::blit_image_to_image_no_mipmap(cmd, vk_res.draw_target.image, vk_res.swapchain.images[swapchain_image_index], vk_res.draw_target.image_extent, vk_res.swapchain.extent);
 
         // After drawing, transition the image to presentable
         vk_image::transition_image(cmd, vk_res.swapchain.images[swapchain_image_index], VK_IMAGE_LAYOUT_TRANSFER_DST_OPTIMAL, VK_IMAGE_LAYOUT_PRESENT_SRC_KHR);

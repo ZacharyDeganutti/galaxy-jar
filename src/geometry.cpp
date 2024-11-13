@@ -256,7 +256,7 @@ namespace geometry {
             auto& diffuse_texture = host_model.diffuse_textures[piece.material_index];
             vk_types::AllocatedImage diffuse_texture_image = {};
             if (diffuse_texture.has_value()) {
-                diffuse_texture_image = vk_image::upload_rgba_image(context, diffuse_texture.value(), VK_IMAGE_LAYOUT_SHADER_READ_ONLY_OPTIMAL);
+                diffuse_texture_image = vk_image::upload_rgba_image_mipmapped(context, diffuse_texture.value(), VK_IMAGE_LAYOUT_SHADER_READ_ONLY_OPTIMAL);
             } else {
                 // TODO: Make texture fallback common so we don't need tons of random little 1 pixel image allocations.
                 // Make a white texture that samples a value of 1.0 for all channels so it acts as a passthrough when multiplying against diffuse parameters.
