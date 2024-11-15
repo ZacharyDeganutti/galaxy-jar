@@ -15,7 +15,7 @@ layout(set = 0, binding = 0) uniform UniformBufferObject {
 float inv_aspect = 600.0/800.0;
 float fov = 45.0;
 float tan_half_fov = tan(fov/2.0);
-float near = 100;
+float near = 1;
 float far = 2000.0;
 
 float turn = radians(90);

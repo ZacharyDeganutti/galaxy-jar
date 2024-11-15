@@ -33,7 +33,7 @@ int main() {
     vk_types::Context context = vk_init::init(required_device_extensions, glfw_extensions, window);
     
     // Load other resources
-    geometry::HostModel dummy_model = geometry::load_obj_model("sponza.obj", "../../../assets/sponza/");
+    geometry::HostModel dummy_model = geometry::load_obj_model("rungholt.obj", "../../../assets/rungholt/");
     // std::vector<vk_types::GpuMeshBuffers> mesh_resources = vk_buffer::create_mesh_buffers(context, dummy_model);
     geometry::GpuModel dummy_gpu_model = geometry::upload_model(context, dummy_model);
 

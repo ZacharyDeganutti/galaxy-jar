@@ -290,7 +290,7 @@ namespace vk_layer {
         vk_descriptors::DescriptorAllocator descriptor_allocator = {};
         vk_types::PersistentUniformBuffer<glm::mat4> modelview_ubo = vk_buffer::create_persistent_mapped_uniform_buffer<glm::mat4>(context);
         vk_types::PersistentUniformBuffer<glm::vec4> brightness_ubo = vk_buffer::create_persistent_mapped_uniform_buffer<glm::vec4>(context);
-        modelview_ubo = modelview_ubo.update(glm::mat4(1.0f));
+        modelview_ubo = modelview_ubo.update(glm::rotate(glm::translate(glm::mat4(1.0f), glm::vec3(0.0f, 0.0f, 75.0f)), 0.75f, glm::vec3(1.0f, 0.0f, 0.0f)));
         brightness_ubo = brightness_ubo.update(glm::vec4(0.0f, 0.0f, 0.0f, 1.0f));
         std::vector<VkDescriptorType> graphics_descriptor_types = { VK_DESCRIPTOR_TYPE_UNIFORM_BUFFER };
         VkDescriptorSetLayout graphics_ubo_descriptor_layout = vk_descriptors::init_descriptor_layout(context.device, VK_SHADER_STAGE_ALL_GRAPHICS, graphics_descriptor_types, lifetime);
