@@ -516,7 +516,7 @@ namespace vk_init {
         const uint32_t NO_MIPMAPS = 1;
         std::vector<VkImageView> swapchain_views(swapchain_images.size());
         for (auto swapchain_image : swapchain_images) {
-            VkImageView view = vk_image::init_image_view(device, swapchain_image, surface_format.format, NO_MIPMAPS, cleanup_procedures);
+            VkImageView view = vk_image::init_image_view(device, swapchain_image, vk_image::Representation::Flat, surface_format.format, NO_MIPMAPS, cleanup_procedures);
             swapchain_views.push_back(view);
         }
 
@@ -683,7 +683,7 @@ namespace vk_init {
         };
 
         const uint32_t NO_MIPMAP = 1;
-        vk_types::AllocatedImage draw_target = vk_image::init_allocated_image(vulkan_device, allocator, draw_target_format, draw_target_flags, NO_MIPMAP, draw_target_extent, cleanup_procedures);
+        vk_types::AllocatedImage draw_target = vk_image::init_allocated_image(vulkan_device, allocator, vk_image::Representation::Flat, draw_target_format, draw_target_flags, NO_MIPMAP, draw_target_extent, cleanup_procedures);
 
         // Allocate a depth target as well
         // TODO: make more robust format checks
@@ -697,7 +697,7 @@ namespace vk_init {
             swapchain.extent.height
         };
 
-        vk_types::AllocatedImage depth_buffer = vk_image::init_allocated_image(vulkan_device, allocator, depth_buffer_format, depth_buffer_flags, NO_MIPMAP, depth_buffer_extent, cleanup_procedures);
+        vk_types::AllocatedImage depth_buffer = vk_image::init_allocated_image(vulkan_device, allocator, vk_image::Representation::Flat, depth_buffer_format, depth_buffer_flags, NO_MIPMAP, depth_buffer_extent, cleanup_procedures);
 
         return vk_types::Context {
             cleanup_procedures,

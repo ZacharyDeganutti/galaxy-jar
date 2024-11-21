@@ -8,10 +8,17 @@
 #include "vk_types.hpp"
 
 namespace vk_image {
+    
+    enum class Representation {
+        Flat,
+        Cubemap
+    };
+
     struct HostImage {
         uint32_t width;
         uint32_t height;
         std::vector<unsigned char> data;
+        Representation representation;
     };
 
     struct HostImageRgba {
@@ -39,7 +46,7 @@ namespace vk_image {
     VkImageSubresourceRange make_miplevels_subresource_range(const VkImageAspectFlags aspect_mask);
     
     // Rough around the edges general functions, prefer the higher level ones when possible.
-    vk_types::AllocatedImage init_allocated_image(const VkDevice device, const VmaAllocator allocator, const VkFormat format, const VkImageUsageFlags usage_flags, const uint32_t miplevels, const VkExtent2D extent, vk_types::CleanupProcedures& cleanup_procedures);
-    VkImageView init_image_view(const VkDevice device, const VkImage image, const VkFormat format, const uint32_t miplevels, vk_types::CleanupProcedures& cleanup_procedures);
+    vk_types::AllocatedImage init_allocated_image(const VkDevice device, const VmaAllocator allocator, const Representation representation, const VkFormat format, const VkImageUsageFlags usage_flags, const uint32_t miplevels, const VkExtent2D extent, vk_types::CleanupProcedures& cleanup_procedures);
+    VkImageView init_image_view(const VkDevice device, const VkImage image, const Representation representation, const VkFormat format, const uint32_t miplevels, vk_types::CleanupProcedures& cleanup_procedures);
 }
 #endif // VK_IMAGE_H_

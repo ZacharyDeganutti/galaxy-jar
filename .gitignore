@@ -1,6 +1,5 @@
 build/
 external/
-assets/sponza/
-assets/rungholt/
+assets/
 .vscode/settings.json
 *.spv

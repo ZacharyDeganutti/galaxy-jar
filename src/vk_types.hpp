@@ -55,6 +55,13 @@ namespace vk_types{
         };
     };
 
+    template <class T>
+    struct UniformInfo {
+        vk_types::PersistentUniformBuffer<T> buffer;
+        VkDescriptorSetLayout descriptor_set_layout;
+        VkDescriptorSet descriptor_set;
+    };
+
     struct CleanupProcedures {
         private:
         std::deque<std::function<void()>> procedure_stack;

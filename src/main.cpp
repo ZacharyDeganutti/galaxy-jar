@@ -32,27 +32,29 @@ int main() {
     // Initialize vulkan
     vk_types::Context context = vk_init::init(required_device_extensions, glfw_extensions, window);
     
-    // Load other resources
-    geometry::HostModel dummy_model = geometry::load_obj_model("rungholt.obj", "../../../assets/rungholt/");
-    // std::vector<vk_types::GpuMeshBuffers> mesh_resources = vk_buffer::create_mesh_buffers(context, dummy_model);
-    geometry::GpuModel dummy_gpu_model = geometry::upload_model(context, dummy_model);
+    // Load other resources. We don't need the HostModel past upload so we can just dump it on the ground after upload since it can be pretty hefty.
+    geometry::GpuModel dummy_gpu_model;
+    {
+        geometry::HostModel dummy_model = geometry::load_obj_model("sponza.obj", "../../../assets/sponza/");
+        dummy_gpu_model = geometry::upload_model(context, dummy_model);
+    }
 
     std::vector<geometry::GpuModel> drawables = {dummy_gpu_model};
 
-    vk_layer::FreeBuffers free_buffers = vk_layer::build_free_buffers(context, context.cleanup_procedures);
+    vk_layer::GlobalUniforms global_uniforms = vk_layer::build_global_uniforms(context, context.buffer_count, context.cleanup_procedures);
     std::vector<VkDescriptorSetLayout> descriptor_set_layouts = { 
-        free_buffers.modelview_descriptor_set_layout,
-        free_buffers.brightness_descriptor_set_layout,
+        global_uniforms.modelview.get_layout(),
+        global_uniforms.brightness.get_layout(),
         drawables[0].texture_layout, // TODO: All of the drawables have a shared layout, consider finding a cleaner way to model this
     };
 
     vk_layer::Pipelines pipelines = vk_layer::build_pipelines(context, descriptor_set_layouts, context.cleanup_procedures);
 
     vk_layer::DrawState draw_state = {
-        .not_first_frame = false,
         .buf_num = 0,
         .frame_num = 0,
-        .buffers = free_buffers,
+        .frame_in_flight = 0,
+        .buffers = global_uniforms,
     };
     
     while(!glfwWindowShouldClose(window)) {

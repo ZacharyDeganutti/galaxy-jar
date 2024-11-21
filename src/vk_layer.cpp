@@ -192,7 +192,11 @@ namespace vk_layer {
             // Draw all buffers
             for (int piece = 0; piece < drawable.vertex_buffers.size(); ++piece) {
                 // Bind up the descriptors to match each piece
-                std::vector<VkDescriptorSet> graphics_descriptor_sets = { state.buffers.modelview_descriptor_set, state.buffers.brightness_descriptor_set, drawable.diffuse_texture_descriptors[piece] };
+                std::vector<VkDescriptorSet> graphics_descriptor_sets = { 
+                    state.buffers.modelview.get_descriptor_set(state.frame_in_flight), 
+                    state.buffers.brightness.get_descriptor_set(state.frame_in_flight), 
+                    drawable.diffuse_texture_descriptors[piece] 
+                };
                 vkCmdBindDescriptorSets(cmd, pipeline.bind_point, pipeline.layout, 0, graphics_descriptor_sets.size(), graphics_descriptor_sets.data(), 0, nullptr);
 
                 // Bind the vertex buffers and fire off an indexed draw
@@ -285,52 +289,40 @@ namespace vk_layer {
         return pipes;
     }
 
-    FreeBuffers build_free_buffers(vk_types::Context& context, vk_types::CleanupProcedures& lifetime) {
-        // Setup descriptors for graphics pipeline
-        vk_descriptors::DescriptorAllocator descriptor_allocator = {};
-        vk_types::PersistentUniformBuffer<glm::mat4> modelview_ubo = vk_buffer::create_persistent_mapped_uniform_buffer<glm::mat4>(context);
-        vk_types::PersistentUniformBuffer<glm::vec4> brightness_ubo = vk_buffer::create_persistent_mapped_uniform_buffer<glm::vec4>(context);
-        modelview_ubo = modelview_ubo.update(glm::rotate(glm::translate(glm::mat4(1.0f), glm::vec3(0.0f, 0.0f, 75.0f)), 0.75f, glm::vec3(1.0f, 0.0f, 0.0f)));
-        brightness_ubo = brightness_ubo.update(glm::vec4(0.0f, 0.0f, 0.0f, 1.0f));
-        std::vector<VkDescriptorType> graphics_descriptor_types = { VK_DESCRIPTOR_TYPE_UNIFORM_BUFFER };
-        VkDescriptorSetLayout graphics_ubo_descriptor_layout = vk_descriptors::init_descriptor_layout(context.device, VK_SHADER_STAGE_ALL_GRAPHICS, graphics_descriptor_types, lifetime);
-        VkDescriptorSet graphics_modelview_descriptor_set = vk_descriptors::init_buffer_descriptors(context.device, modelview_ubo.buffer_resource.buffer, vk_descriptors::DescriptorType::Uniform, graphics_ubo_descriptor_layout, descriptor_allocator, lifetime);
-        VkDescriptorSet graphics_brightness_descriptor_set = vk_descriptors::init_buffer_descriptors(context.device, brightness_ubo.buffer_resource.buffer, vk_descriptors::DescriptorType::Uniform, graphics_ubo_descriptor_layout, descriptor_allocator, lifetime);
+    GlobalUniforms build_global_uniforms(vk_types::Context& context, size_t buffer_count, vk_types::CleanupProcedures& lifetime) {
 
-        std::vector<VkDescriptorSetLayout> graphics_pipeline_layout_set = { graphics_ubo_descriptor_layout, graphics_ubo_descriptor_layout };
+        glm::mat4 modelview = glm::translate(glm::mat4(1.0f), glm::vec3(10.0f, -90.0f, 0.0f));
+        BufferedUniformBuffer<glm::mat4> modelview_ubo = BufferedUniformBuffer<glm::mat4>(context, modelview, buffer_count, lifetime);
+        BufferedUniformBuffer<glm::vec4> brightness_ubo = BufferedUniformBuffer<glm::vec4>(context, glm::vec4(0.0f, 0.0f, 0.0f, 1.0f), buffer_count, lifetime);
 
-        FreeBuffers free_buffers = FreeBuffers {
+        GlobalUniforms global_buffers = GlobalUniforms {
             modelview_ubo,
-            graphics_ubo_descriptor_layout,
-            graphics_modelview_descriptor_set,
             brightness_ubo,
-            graphics_ubo_descriptor_layout,
-            graphics_brightness_descriptor_set,
         };
 
-        return free_buffers;
+        return global_buffers;
     }
 
     DrawState draw(const vk_types::Context& vk_res, const Pipelines& pipelines, const std::vector<geometry::GpuModel>& drawables, const DrawState& state) {
+        // TODO: Fix this so that it actually does frames in flight. May need first-frame checks for each buffer slot.
         // Wait for previous frame to finish drawing (if applicable). Timeout 1s
-        if (state.not_first_frame) {
-            uint32_t prior_frame = (state.buf_num + (vk_res.buffer_count - 1)) % vk_res.buffer_count;
-            if ((vkWaitForFences(vk_res.device, 1, &(vk_res.synchronization[prior_frame].render_fence), VK_TRUE, 1000000000)) != VK_SUCCESS) {
-                printf("Unable to wait on fence for previous frame %d\n", prior_frame);
+        if (state.frame_num >= vk_res.buffer_count) {
+            uint32_t wait_frame = state.frame_in_flight;
+            if ((vkWaitForFences(vk_res.device, 1, &(vk_res.synchronization[wait_frame].render_fence), VK_TRUE, 1000000000)) != VK_SUCCESS) {
+                printf("Unable to wait on fence for previous frame %d\n", wait_frame);
                 exit(EXIT_FAILURE);
             }
-            if ((vkResetFences(vk_res.device, 1, &(vk_res.synchronization[prior_frame].render_fence))) != VK_SUCCESS) {
-                printf("Unable to reset fence for previous frame %d\n", prior_frame);
+            if ((vkResetFences(vk_res.device, 1, &(vk_res.synchronization[wait_frame].render_fence))) != VK_SUCCESS) {
+                printf("Unable to reset fence for previous frame %d\n", wait_frame);
                 exit(EXIT_FAILURE);
             }
         }
         else {
             // Reset all fences on the first run through
-            for (auto sync : vk_res.synchronization) {
-                if ((vkResetFences(vk_res.device, 1, &(sync.render_fence))) != VK_SUCCESS) {
-                    printf("Unable to do initial reset of fences\n");
-                    exit(EXIT_FAILURE);
-                }
+            // May spuriously hit this path after running for 1 billion continuous centuries :(
+            if ((vkResetFences(vk_res.device, 1, &(vk_res.synchronization[state.frame_num].render_fence))) != VK_SUCCESS) {
+                printf("Unable to do initial reset of fences\n");
+                exit(EXIT_FAILURE);
             }
         }
 
@@ -425,17 +417,22 @@ namespace vk_layer {
             exit(EXIT_FAILURE);
         }
 
-        /// Update state ///
-        glm::mat4 rotated_modelview = glm::rotate(*state.buffers.modelview_ubo.buffer_view, glm::radians(0.01f), glm::vec3(0.0f, 1.0f, 0.0f));
+        /// Update state for next frame ///
+        glm::mat4 rotated_modelview = glm::rotate(state.buffers.modelview.get(), glm::radians(0.01f), glm::vec3(0.0f, 1.0f, 0.0f));
         glm::vec4 current_brightness = glm::vec4(glm::vec3(glm::sin(glm::radians(((float)state.frame_num) / 200.0f))), 1.0f);
-        FreeBuffers updated_buffers = state.buffers;
-        updated_buffers.modelview_ubo = state.buffers.modelview_ubo.update(rotated_modelview);
-        updated_buffers.brightness_ubo = state.buffers.brightness_ubo.update(current_brightness);
+        GlobalUniforms updated_buffers = state.buffers;
+        // updated_buffers.modelview_ubo = state.buffers.modelview_ubo.update(rotated_modelview);
+        // updated_buffers.brightness_ubo = state.buffers.brightness_ubo.update(current_brightness);
+        auto next_frame_index = (state.frame_in_flight + 1) % vk_res.buffer_count;
+        updated_buffers.modelview.set(rotated_modelview);
+        updated_buffers.modelview.push(next_frame_index);
+        updated_buffers.brightness.set(current_brightness);
+        updated_buffers.brightness.push(next_frame_index);
 
         return DrawState {
-            .not_first_frame = true,
             .buf_num = static_cast<uint8_t>((state.buf_num + 1u) % vk_res.buffer_count),
             .frame_num = state.frame_num + 1,
+            .frame_in_flight = next_frame_index,
             .buffers = updated_buffers
         };
     }

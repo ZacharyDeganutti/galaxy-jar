@@ -27,7 +27,7 @@ namespace vk_image {
         stbi_image_free(image_data);
 
         return HostImageRgba{
-            HostImage { static_cast<uint32_t>(width), static_cast<uint32_t>(height), image_data_vec }
+            HostImage { static_cast<uint32_t>(width), static_cast<uint32_t>(height), image_data_vec, Representation::Flat }
         };
     }
 
@@ -38,7 +38,7 @@ namespace vk_image {
 
         // if mipmaps are enabled, we need to calculate the number of mipmaps, otherwise we only have one mip level.
         const uint32_t mip_levels = mipmaps_enabled ? static_cast<uint32_t>(std::floor(std::log2(std::max(image.image.width, image.image.height)))) + 1 : 1;
-        vk_types::AllocatedImage allocated_image = init_allocated_image(context.device, context.allocator, image_format, image_flags, mip_levels, extent, lifetime);
+        vk_types::AllocatedImage allocated_image = init_allocated_image(context.device, context.allocator, image.image.representation, image_format, image_flags, mip_levels, extent, lifetime);
         
         // Create a temporary staging buffer which can be used to transfer from CPU memory to GPU memory
         vk_types::CleanupProcedures staging_buffer_lifetime = {};
@@ -278,13 +278,17 @@ namespace vk_image {
         return sampler;
     }
 
-    VkImageView init_image_view(const VkDevice device, const VkImage image, const VkFormat format, const uint32_t miplevels, vk_types::CleanupProcedures& cleanup_procedures) {
+    VkImageView init_image_view(const VkDevice device, const VkImage image, const Representation representation, const VkFormat format, const uint32_t miplevels, vk_types::CleanupProcedures& cleanup_procedures) {
         VkImageView image_view = {};
 
         VkImageViewCreateInfo image_view_create_info{};
         image_view_create_info.sType = VK_STRUCTURE_TYPE_IMAGE_VIEW_CREATE_INFO;
         image_view_create_info.image = image;
-        image_view_create_info.viewType = VK_IMAGE_VIEW_TYPE_2D;
+        if (representation == Representation::Cubemap) {
+            image_view_create_info.viewType = VK_IMAGE_VIEW_TYPE_CUBE;
+        } else {
+            image_view_create_info.viewType = VK_IMAGE_VIEW_TYPE_2D;
+        }
         image_view_create_info.format = format;
         image_view_create_info.components.r = VK_COMPONENT_SWIZZLE_IDENTITY;
         image_view_create_info.components.g = VK_COMPONENT_SWIZZLE_IDENTITY;
@@ -308,7 +312,7 @@ namespace vk_image {
         return image_view;
     }
 
-    vk_types::AllocatedImage init_allocated_image(const VkDevice device, const VmaAllocator allocator, const VkFormat format, const VkImageUsageFlags usage_flags, const uint32_t miplevels, const VkExtent2D extent, vk_types::CleanupProcedures& cleanup_procedures) {
+    vk_types::AllocatedImage init_allocated_image(const VkDevice device, const VmaAllocator allocator, const Representation representation, const VkFormat format, const VkImageUsageFlags usage_flags, const uint32_t miplevels, const VkExtent2D extent, vk_types::CleanupProcedures& cleanup_procedures) {
         // Setup image specification
         VkImageCreateInfo image_info = {};
         image_info.sType = VK_STRUCTURE_TYPE_IMAGE_CREATE_INFO;
@@ -320,7 +324,12 @@ namespace vk_image {
         image_info.extent = {extent.width, extent.height, 1};
 
         image_info.mipLevels = miplevels;
-        image_info.arrayLayers = 1;
+        if (representation == Representation::Cubemap) {
+            image_info.flags |= VK_IMAGE_CREATE_CUBE_COMPATIBLE_BIT;
+            image_info.arrayLayers = 6;
+        } else {
+            image_info.arrayLayers = 1;
+        }
 
         image_info.samples = VK_SAMPLE_COUNT_1_BIT;
 
@@ -342,7 +351,7 @@ namespace vk_image {
             vmaDestroyImage(allocator, image, allocation);
         });
 
-        VkImageView view = init_image_view(device, image, format, miplevels, cleanup_procedures);
+        VkImageView view = init_image_view(device, image, representation, format, miplevels, cleanup_procedures);
         vk_types::AllocatedImage allocated_image = {};
         allocated_image.allocation = allocation;
         allocated_image.image = image;

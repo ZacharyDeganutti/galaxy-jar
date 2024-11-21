@@ -17,14 +17,60 @@
 
 namespace vk_layer
 {
-    struct FreeBuffers {
-        vk_types::PersistentUniformBuffer<glm::mat4> modelview_ubo;
-        VkDescriptorSetLayout modelview_descriptor_set_layout;
-        VkDescriptorSet modelview_descriptor_set;
+    template <class T>
+    struct BufferedUniformBuffer {
+        private:
+        T value;
+        std::vector<vk_types::UniformInfo<T>> uniform;
+        public:
+        BufferedUniformBuffer(vk_types::Context& vk_context, const T initial_value, const size_t buffer_count, vk_types::CleanupProcedures& lifetime) : value(initial_value), uniform(std::vector<vk_types::UniformInfo<T>>()) {
+            const std::vector<VkDescriptorType> descriptor_types = { static_cast<VkDescriptorType>(vk_descriptors::DescriptorType::Uniform) };
+            auto descriptor_layout = vk_descriptors::init_descriptor_layout(vk_context.device, VK_SHADER_STAGE_ALL_GRAPHICS, descriptor_types, vk_context.cleanup_procedures);
+            uniform.reserve(buffer_count);
+            for (size_t index = 0; index < buffer_count; ++index) {
+                vk_descriptors::DescriptorAllocator descriptor_allocator = {};
+                auto ubo = vk_buffer::create_persistent_mapped_uniform_buffer<T>(vk_context);
+                auto buffer_descriptors = vk_descriptors::init_buffer_descriptors(vk_context.device, ubo.buffer_resource.buffer, vk_descriptors::DescriptorType::Uniform, descriptor_layout, descriptor_allocator, lifetime);
+                vk_types::UniformInfo<T> default_uniform = {
+                    ubo,
+                    descriptor_layout,
+                    buffer_descriptors,
+                };
+                default_uniform.buffer.update(value);
+                uniform.push_back(default_uniform);
+            }
+        }
+    
+        // Set the canonical value of the uniform. Does not update the value on the GPU.
+        void set(T new_value) {
+            value = new_value;
+        }
 
-        vk_types::PersistentUniformBuffer<glm::vec4> brightness_ubo;
-        VkDescriptorSetLayout brightness_descriptor_set_layout;
-        VkDescriptorSet brightness_descriptor_set;
+        // Get the canonical value of the uniform. Does not read the value from the GPU.
+        T get() const {
+            return value;
+        }
+
+        // Push the current value of the uniform to the GPU. Updates the GPU buffer specified by index. Assumes index is in bounds.
+        void push(size_t index) {
+            uniform[index].buffer.update(value);
+        }
+
+        // Retrieve the descriptor set layout for the uniform buffer.
+        VkDescriptorSetLayout get_layout() const {
+            // All uniforms have the same layout, so we can just return the first one.
+            return uniform[0].descriptor_set_layout;
+        }
+
+        // Retrieve the descriptor set for the uniform buffer at the specified index.
+        VkDescriptorSet get_descriptor_set(size_t index) const {
+            return uniform[index].descriptor_set;
+        }
+    };
+
+    struct GlobalUniforms {
+        BufferedUniformBuffer<glm::mat4> modelview;
+        BufferedUniformBuffer<glm::vec4> brightness;
     };
 
     struct Pipelines {
@@ -33,14 +79,14 @@ namespace vk_layer
     };
 
     struct DrawState {
-        bool not_first_frame;
         uint8_t buf_num;
         uint64_t frame_num;
-        FreeBuffers buffers;
+        uint64_t frame_in_flight;
+        GlobalUniforms buffers;
     };
 
     Pipelines build_pipelines(vk_types::Context& context, const std::vector<VkDescriptorSetLayout>& graphics_descriptor_layouts, vk_types::CleanupProcedures& lifetime);
-    FreeBuffers build_free_buffers(vk_types::Context& context, vk_types::CleanupProcedures& lifetime);
+    GlobalUniforms build_global_uniforms(vk_types::Context& context, const size_t buffer_count, vk_types::CleanupProcedures& lifetime);
     void immediate_submit(const vk_types::Context& res, std::function<void(VkCommandBuffer cmd)>&& function);
     DrawState draw(const vk_types::Context& res, const Pipelines& pipelines, const std::vector<geometry::GpuModel>& drawables, const DrawState& state);
     void cleanup(vk_types::Context& resources, vk_types::CleanupProcedures& cleanup_procedures);

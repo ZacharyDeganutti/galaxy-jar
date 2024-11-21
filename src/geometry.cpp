@@ -264,7 +264,8 @@ namespace geometry {
                     .image = vk_image::HostImage {
                         .width = 1,
                         .height = 1,
-                        .data = {255, 255, 255, 255}  // RGBA: Full brightness white
+                        .data = {255, 255, 255, 255},  // RGBA: Full brightness white
+                        .representation = vk_image::Representation::Flat
                     }
                 };
                 diffuse_texture_image = vk_image::upload_rgba_image(context, white_pixel_texture, VK_IMAGE_LAYOUT_SHADER_READ_ONLY_OPTIMAL);
