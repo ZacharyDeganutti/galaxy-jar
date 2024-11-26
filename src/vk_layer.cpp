@@ -277,10 +277,10 @@ namespace vk_layer {
         // Assemble the graphics pipeline
         VkShaderModule vert_shader = vk_pipeline::init_shader_module(context.device, "../../../src/shaders/colored_triangle.glsl.vert.spv", lifetime);
         VkShaderModule frag_shader = vk_pipeline::init_shader_module(context.device, "../../../src/shaders/colored_triangle.glsl.frag.spv", lifetime);
-        
         VkPipelineLayout graphics_pipeline_layout = vk_pipeline::init_pipeline_layout(context.device, graphics_descriptor_layouts, lifetime);
-        vk_types::Pipeline graphics_pipeline = vk_pipeline::init_graphics_pipeline(context.device, graphics_pipeline_layout, context.draw_target.image_format, context.depth_buffer.image_format, vert_shader, frag_shader, { }, lifetime);
-
+        vk_pipeline::GraphicsPipelineBuilder standard_render_pipeline_builder = vk_pipeline::GraphicsPipelineBuilder(context.device, graphics_pipeline_layout, vert_shader, frag_shader, context.draw_target.image_format, context.depth_buffer.image_format, lifetime);
+        vk_types::Pipeline graphics_pipeline = standard_render_pipeline_builder.build();
+        
         Pipelines pipes =  Pipelines {
             .graphics = graphics_pipeline,
             .compute = compute_pipeline,
@@ -291,7 +291,7 @@ namespace vk_layer {
 
     GlobalUniforms build_global_uniforms(vk_types::Context& context, size_t buffer_count, vk_types::CleanupProcedures& lifetime) {
 
-        glm::mat4 modelview = glm::translate(glm::mat4(1.0f), glm::vec3(10.0f, -90.0f, 0.0f));
+        glm::mat4 modelview = glm::translate(glm::mat4(1.0f), glm::vec3(0.0f, 0.0f, 3.0f));
         BufferedUniformBuffer<glm::mat4> modelview_ubo = BufferedUniformBuffer<glm::mat4>(context, modelview, buffer_count, lifetime);
         BufferedUniformBuffer<glm::vec4> brightness_ubo = BufferedUniformBuffer<glm::vec4>(context, glm::vec4(0.0f, 0.0f, 0.0f, 1.0f), buffer_count, lifetime);
 

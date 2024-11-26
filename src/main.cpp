@@ -35,7 +35,7 @@ int main() {
     // Load other resources. We don't need the HostModel past upload so we can just dump it on the ground after upload since it can be pretty hefty.
     geometry::GpuModel dummy_gpu_model;
     {
-        geometry::HostModel dummy_model = geometry::load_obj_model("sponza.obj", "../../../assets/sponza/");
+        geometry::HostModel dummy_model = geometry::load_obj_model("cube.obj", "../../../assets/cube/");
         dummy_gpu_model = geometry::upload_model(context, dummy_model);
     }
 

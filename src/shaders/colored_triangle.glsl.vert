@@ -29,7 +29,7 @@ mat4x4 cam_rotation = ubo.modelview * transpose(mat4x4(
 
 mat4x4 camera = cam_rotation * transpose(mat4x4(
 						1, 0, 0, 0,
-						0, -1, 0, 100,
+						0, -1, 0, 0,
 						0, 0, 1, 0,
 						0, 0, 0, 1));
 

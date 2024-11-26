@@ -31,6 +31,30 @@ namespace vk_image {
         };
     }
 
+    HostImageRgba load_rgba_cubemap(const std::string& filename) {
+        
+        int width = 0;
+        int height = 0; 
+        int channels = 0;
+
+        const int FORCE_CHANNELS = 4;
+        stbi_set_flip_vertically_on_load(true);
+        unsigned char* image_data = stbi_load(filename.c_str(), &width, &height, &channels, FORCE_CHANNELS);
+
+        if (!image_data) {
+            printf("Unable to load image %s\n", filename.c_str());
+            exit(EXIT_FAILURE);
+        }
+
+        std::vector<unsigned char> image_data_vec(image_data, image_data + (width * height * FORCE_CHANNELS));
+
+        stbi_image_free(image_data);
+
+        return HostImageRgba{
+            HostImage { static_cast<uint32_t>(width), static_cast<uint32_t>(height), image_data_vec, Representation::Cubemap }
+        };
+    }
+
     vk_types::AllocatedImage upload_rgba_image_base(const vk_types::Context& context, const HostImageRgba& image, VkImageLayout desired_layout, bool mipmaps_enabled, vk_types::CleanupProcedures& lifetime) {
         const VkFormat image_format = VK_FORMAT_R8G8B8A8_SRGB;
         const VkImageUsageFlags image_flags =  VK_IMAGE_USAGE_SAMPLED_BIT | VK_IMAGE_USAGE_TRANSFER_SRC_BIT | VK_IMAGE_USAGE_TRANSFER_DST_BIT;

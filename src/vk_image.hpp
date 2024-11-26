@@ -26,6 +26,7 @@ namespace vk_image {
     };
 
     HostImageRgba load_rgba_image(const std::string& filepath);
+    HostImageRgba load_rgba_cubemap(const std::string& filepath);
     vk_types::AllocatedImage upload_rgba_image(vk_types::Context& context, const HostImageRgba& image, VkImageLayout desired_layout);
     vk_types::AllocatedImage upload_rgba_image(const vk_types::Context& context, const HostImageRgba& image, VkImageLayout desired_layout, vk_types::CleanupProcedures& lifetime);
     vk_types::AllocatedImage upload_rgba_image_mipmapped(vk_types::Context& context, const HostImageRgba& image, VkImageLayout desired_layout);
