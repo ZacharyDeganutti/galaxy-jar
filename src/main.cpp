@@ -32,34 +32,49 @@ int main() {
     // Initialize vulkan
     vk_types::Context context = vk_init::init(required_device_extensions, glfw_extensions, window);
     
+    /// Setup for skybox background draw
+    vk_layer::SkyboxUniforms skybox_uniforms = vk_layer::build_skybox_uniforms(context, context.buffer_count, context.cleanup_procedures);
+    vk_image::HostImageRgba skybox_image = vk_image::load_rgba_cubemap("../../../assets/skybox/daylight.png");
+    vk_layer::SkyboxTexture skybox_texture = vk_layer::upload_skybox(context, skybox_image, context.cleanup_procedures);
+    geometry::GpuModel skybox_cube;
+    {
+        geometry::HostModel cube_model = geometry::load_obj_model("cube.obj", "../../../assets/cube/");
+        skybox_cube = geometry::upload_model(context, cube_model);
+    }
+    std::vector<VkDescriptorSetLayout> skybox_descriptor_set_layouts = { 
+        skybox_uniforms.cam_rotation.get_layout(),
+        skybox_texture.layout
+    };
+
+    /// Setup for main geometry draw
     // Load other resources. We don't need the HostModel past upload so we can just dump it on the ground after upload since it can be pretty hefty.
     geometry::GpuModel dummy_gpu_model;
     {
-        geometry::HostModel dummy_model = geometry::load_obj_model("cube.obj", "../../../assets/cube/");
+        geometry::HostModel dummy_model = geometry::load_obj_model("house.obj", "../../../assets/rungholt/");
         dummy_gpu_model = geometry::upload_model(context, dummy_model);
     }
 
-    std::vector<geometry::GpuModel> drawables = {dummy_gpu_model};
-
+    std::vector<geometry::GpuModel> main_drawables = {dummy_gpu_model};
     vk_layer::GlobalUniforms global_uniforms = vk_layer::build_global_uniforms(context, context.buffer_count, context.cleanup_procedures);
-    std::vector<VkDescriptorSetLayout> descriptor_set_layouts = { 
+    std::vector<VkDescriptorSetLayout> graphics_descriptor_set_layouts = { 
         global_uniforms.modelview.get_layout(),
         global_uniforms.brightness.get_layout(),
-        drawables[0].texture_layout, // TODO: All of the drawables have a shared layout, consider finding a cleaner way to model this
+        main_drawables[0].texture_layout, // TODO: All of the drawables have a shared layout, consider finding a cleaner way to model this
     };
 
-    vk_layer::Pipelines pipelines = vk_layer::build_pipelines(context, descriptor_set_layouts, context.cleanup_procedures);
+    vk_layer::Pipelines pipelines = vk_layer::build_pipelines(context, graphics_descriptor_set_layouts, skybox_descriptor_set_layouts, context.cleanup_procedures);
 
     vk_layer::DrawState draw_state = {
         .buf_num = 0,
         .frame_num = 0,
         .frame_in_flight = 0,
-        .buffers = global_uniforms,
+        .main_dynamic_uniforms = global_uniforms,
+        .skybox_dynamic_uniforms = skybox_uniforms
     };
     
     while(!glfwWindowShouldClose(window)) {
         glfwPollEvents();
-        draw_state = vk_layer::draw(context, pipelines, drawables, draw_state);
+        draw_state = vk_layer::draw(context, pipelines, main_drawables, skybox_cube, skybox_texture, draw_state);
     }
 
     vk_layer::cleanup(context, context.cleanup_procedures);

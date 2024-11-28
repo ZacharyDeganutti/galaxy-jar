@@ -123,6 +123,77 @@ namespace vk_layer {
             vkCmdDispatch(cmd, std::ceil(background_target.image_extent.width / 16.0), std::ceil(background_target.image_extent.height / 16.0), 1);
         }
 
+        void draw_background_skybox(const VkCommandBuffer cmd, const vk_types::AllocatedImage& background_target, const vk_types::Pipeline& pipeline, const geometry::GpuModel& cube_model, const SkyboxTexture& texture, const DrawState& state) {
+            // Set up draw target attachment
+            VkRenderingAttachmentInfo color_attachment = {}; 
+            color_attachment.sType = VK_STRUCTURE_TYPE_RENDERING_ATTACHMENT_INFO;
+            color_attachment.pNext = nullptr;
+            color_attachment.imageLayout = VK_IMAGE_LAYOUT_COLOR_ATTACHMENT_OPTIMAL;
+            color_attachment.imageView = background_target.image_view;
+            color_attachment.loadOp = VK_ATTACHMENT_LOAD_OP_LOAD;
+            color_attachment.storeOp = VK_ATTACHMENT_STORE_OP_STORE;
+            // Not multisampling so set this off and leave the resolve view and layouts zeroed out
+            color_attachment.resolveMode = VK_RESOLVE_MODE_NONE;
+            // Not using VK_ATTACHMENT_LOAD_OP_CLEAR, so no need to set clear value either
+            
+            VkRenderingInfo render_info = {};
+            render_info.sType = VK_STRUCTURE_TYPE_RENDERING_INFO;
+            render_info.pNext = nullptr;
+            // Don't think any fancy render flags are needed, leave zeroed
+            render_info.viewMask = 0;
+            render_info.layerCount = 1;
+            render_info.pColorAttachments = &color_attachment;
+            render_info.colorAttachmentCount = 1;
+            render_info.pDepthAttachment = nullptr;
+            render_info.renderArea.extent = background_target.image_extent;
+            render_info.renderArea.offset = VkOffset2D{ 0, 0 };
+            vkCmdBeginRendering(cmd, &render_info);
+
+            vkCmdBindPipeline(cmd, VK_PIPELINE_BIND_POINT_GRAPHICS, pipeline.handle);
+
+            //set dynamic viewport and scissor
+            VkViewport viewport = {};
+            viewport.x = 0;
+            viewport.y = 0;
+            viewport.width = background_target.image_extent.width;
+            viewport.height = background_target.image_extent.height;
+            viewport.minDepth = 0.0f;
+            viewport.maxDepth = 1.0f;
+
+            vkCmdSetViewport(cmd, 0, 1, &viewport);
+
+            VkRect2D scissor = {};
+            scissor.offset.x = 0;
+            scissor.offset.y = 0;
+            scissor.extent = background_target.image_extent;
+
+            vkCmdSetScissor(cmd, 0, 1, &scissor);
+
+            // Draw all buffers
+            for (int piece = 0; piece < cube_model.vertex_buffers.size(); ++piece) {
+                // Bind up the descriptors to match each piece
+                std::vector<VkDescriptorSet> skybox_descriptor_sets = {
+                    state.skybox_dynamic_uniforms.cam_rotation.get_descriptor_set(state.frame_in_flight),
+                    texture.descriptor,
+                };
+                vkCmdBindDescriptorSets(cmd, pipeline.bind_point, pipeline.layout, 0, skybox_descriptor_sets.size(), skybox_descriptor_sets.data(), 0, nullptr);
+
+                // Bind the vertex buffers and fire off an indexed draw
+                const vk_types::GpuMeshBuffers& buffer_group = cube_model.vertex_buffers[piece];
+                vkCmdBindIndexBuffer(cmd, buffer_group.index_buffer.buffer, 0, VK_INDEX_TYPE_UINT32);
+                std::array<VkBuffer, 3> buffer_handles {{
+                    buffer_group.position_buffer.vertex_buffer.buffer,
+                    buffer_group.normal_buffer.vertex_buffer.buffer,
+                    buffer_group.texture_coordinate_buffer.vertex_buffer.buffer
+                }};
+                std::array<VkDeviceSize, 3> offsets {{0,0,0}};
+                vkCmdBindVertexBuffers(cmd, 0, buffer_handles.size(), buffer_handles.data(), offsets.data());
+                vkCmdDrawIndexed(cmd, buffer_group.index_count, 1, 0, 0, 0);
+            }
+
+            vkCmdEndRendering(cmd);
+        }
+
         void draw_geometry(const VkCommandBuffer cmd, const vk_types::AllocatedImage& draw_target, const vk_types::AllocatedImage& depth_buffer, const vk_types::Pipeline& pipeline, const geometry::GpuModel& drawable, const DrawState& state) {
             //begin a render pass  connected to our draw image
 
@@ -184,17 +255,19 @@ namespace vk_layer {
 
             vkCmdSetScissor(cmd, 0, 1, &scissor);
 
-            // Clear out color and depth buffers
-            std::array<VkRenderingAttachmentInfo, 2> attachments = {color_attachment, depth_attachment};
-            std::array<VkExtent2D, 2> extents = {draw_target.image_extent, depth_buffer.image_extent};
+            // Clear out depth buffer
+            // std::array<VkRenderingAttachmentInfo, 2> attachments = {color_attachment, depth_attachment};
+            // std::array<VkExtent2D, 2> extents = {draw_target.image_extent, depth_buffer.image_extent};
+            std::array<VkRenderingAttachmentInfo, 1> attachments = {depth_attachment};
+            std::array<VkExtent2D, 1> extents = {depth_buffer.image_extent};
             clear_attachments(cmd, attachments, extents);
             
             // Draw all buffers
             for (int piece = 0; piece < drawable.vertex_buffers.size(); ++piece) {
                 // Bind up the descriptors to match each piece
                 std::vector<VkDescriptorSet> graphics_descriptor_sets = { 
-                    state.buffers.modelview.get_descriptor_set(state.frame_in_flight), 
-                    state.buffers.brightness.get_descriptor_set(state.frame_in_flight), 
+                    state.main_dynamic_uniforms.modelview.get_descriptor_set(state.frame_in_flight), 
+                    state.main_dynamic_uniforms.brightness.get_descriptor_set(state.frame_in_flight), 
                     drawable.diffuse_texture_descriptors[piece] 
                 };
                 vkCmdBindDescriptorSets(cmd, pipeline.bind_point, pipeline.layout, 0, graphics_descriptor_sets.size(), graphics_descriptor_sets.data(), 0, nullptr);
@@ -260,38 +333,91 @@ namespace vk_layer {
             exit(EXIT_FAILURE);
         }
     }
+
+    SkyboxTexture upload_skybox(vk_types::Context& context, const vk_image::HostImageRgba& skybox_image, vk_types::CleanupProcedures& lifetime) {
+        const std::vector<VkDescriptorType> texture_descriptor_types = {VK_DESCRIPTOR_TYPE_COMBINED_IMAGE_SAMPLER};
+        VkDescriptorSetLayout texture_layout = vk_descriptors::init_descriptor_layout(context.device, VK_SHADER_STAGE_ALL_GRAPHICS, texture_descriptor_types, context.cleanup_procedures);
+
+        // Upload textures for all materials
+        VkSampler texture_sampler = vk_image::init_linear_sampler(context);
+
+        vk_types::AllocatedImage skybox_texture = {};
+        skybox_texture = vk_image::upload_rgba_image(context, skybox_image, VK_IMAGE_LAYOUT_SHADER_READ_ONLY_OPTIMAL, lifetime);
+        
+        vk_descriptors::DescriptorAllocator descriptor_allocator = {};
+        VkDescriptorSet skybox_texture_descriptor = vk_descriptors::init_combined_image_sampler_descriptors(context.device,
+            skybox_texture.image_view,
+            texture_sampler,
+            texture_layout,
+            descriptor_allocator,
+            lifetime);
+        
+        return SkyboxTexture { skybox_texture, skybox_texture_descriptor, texture_layout }; 
+    }
     
-    Pipelines build_pipelines(vk_types::Context& context, const std::vector<VkDescriptorSetLayout>& graphics_descriptor_layouts, vk_types::CleanupProcedures& lifetime) {
-        // Setup descriptors for compute pipeline
+    Pipelines build_pipelines(vk_types::Context& context, const std::vector<VkDescriptorSetLayout>& graphics_descriptor_layouts, const std::vector<VkDescriptorSetLayout>& skybox_descriptor_layouts, vk_types::CleanupProcedures& lifetime) {
+        /// Setup descriptors for compute pipeline
         vk_descriptors::DescriptorAllocator descriptor_allocator = {};
         std::vector<VkDescriptorType> compute_descriptor_types = { VK_DESCRIPTOR_TYPE_STORAGE_IMAGE };
         VkDescriptorSetLayout compute_descriptor_layout = vk_descriptors::init_descriptor_layout(context.device, VK_SHADER_STAGE_COMPUTE_BIT, compute_descriptor_types, lifetime);
         VkDescriptorSet compute_descriptor_set = vk_descriptors::init_image_descriptors(context.device, context.draw_target.image_view, compute_descriptor_layout, descriptor_allocator, lifetime);
 
-        // Assemble the compute pipeline
+        /// Assemble the compute pipeline
         VkShaderModule compute_shader = vk_pipeline::init_shader_module(context.device, "../../../src/shaders/gradient.glsl.comp.spv", lifetime);
         std::vector<VkDescriptorSetLayout> compute_descriptor_set_layouts = { compute_descriptor_layout };
         VkPipelineLayout compute_pipeline_layout = vk_pipeline::init_pipeline_layout(context.device, compute_descriptor_set_layouts, lifetime);
         vk_types::Pipeline compute_pipeline = vk_pipeline::init_compute_pipeline(context.device, compute_pipeline_layout, compute_shader, { compute_descriptor_set }, lifetime);
 
-        // Assemble the graphics pipeline
+        /// Assemble the graphics pipeline
         VkShaderModule vert_shader = vk_pipeline::init_shader_module(context.device, "../../../src/shaders/colored_triangle.glsl.vert.spv", lifetime);
         VkShaderModule frag_shader = vk_pipeline::init_shader_module(context.device, "../../../src/shaders/colored_triangle.glsl.frag.spv", lifetime);
         VkPipelineLayout graphics_pipeline_layout = vk_pipeline::init_pipeline_layout(context.device, graphics_descriptor_layouts, lifetime);
         vk_pipeline::GraphicsPipelineBuilder standard_render_pipeline_builder = vk_pipeline::GraphicsPipelineBuilder(context.device, graphics_pipeline_layout, vert_shader, frag_shader, context.draw_target.image_format, context.depth_buffer.image_format, lifetime);
         vk_types::Pipeline graphics_pipeline = standard_render_pipeline_builder.build();
-        
+
+        /// Assemble the skybox pipeline
+        VkShaderModule skybox_vert_shader = vk_pipeline::init_shader_module(context.device, "../../../src/shaders/skybox.glsl.vert.spv", lifetime);
+        VkShaderModule skybox_frag_shader = vk_pipeline::init_shader_module(context.device, "../../../src/shaders/skybox.glsl.frag.spv", lifetime);
+        VkPipelineLayout skybox_pipeline_layout = vk_pipeline::init_pipeline_layout(context.device, skybox_descriptor_layouts, lifetime);
+        vk_pipeline::GraphicsPipelineBuilder skybox_render_pipeline_builder = vk_pipeline::GraphicsPipelineBuilder(context.device, skybox_pipeline_layout, skybox_vert_shader, skybox_frag_shader, context.draw_target.image_format, VK_FORMAT_UNDEFINED, lifetime);
+        // Set up rasterization the same, but so that the inside of the geometry is drawn
+        VkPipelineRasterizationStateCreateInfo rasterization_info = {};
+        rasterization_info.sType = VK_STRUCTURE_TYPE_PIPELINE_RASTERIZATION_STATE_CREATE_INFO;
+        rasterization_info.pNext = nullptr;
+        rasterization_info.polygonMode = VK_POLYGON_MODE_FILL;
+        rasterization_info.lineWidth = 1.0f;
+        rasterization_info.cullMode = VK_CULL_MODE_FRONT_BIT;
+        rasterization_info.frontFace = VK_FRONT_FACE_CLOCKWISE;
+        skybox_render_pipeline_builder.override(rasterization_info);
+        // Disable depth testing
+        VkPipelineDepthStencilStateCreateInfo depth_info = {};
+        depth_info.sType = VK_STRUCTURE_TYPE_PIPELINE_DEPTH_STENCIL_STATE_CREATE_INFO;
+        depth_info.pNext = nullptr;
+        depth_info.depthTestEnable = VK_FALSE;
+        depth_info.depthWriteEnable = VK_FALSE;
+        depth_info.depthCompareOp = VK_COMPARE_OP_LESS;
+        depth_info.depthBoundsTestEnable = VK_FALSE;
+        depth_info.stencilTestEnable = VK_FALSE;
+        depth_info.front = {};
+        depth_info.back = {};
+        depth_info.minDepthBounds = 0.0f;
+        depth_info.maxDepthBounds = 1.0f;
+        skybox_render_pipeline_builder.override(depth_info);
+        vk_types::Pipeline skybox_pipeline = skybox_render_pipeline_builder.build();
+
+
         Pipelines pipes =  Pipelines {
             .graphics = graphics_pipeline,
             .compute = compute_pipeline,
+            .skybox = skybox_pipeline,
         };
 
         return pipes;
     }
 
-    GlobalUniforms build_global_uniforms(vk_types::Context& context, size_t buffer_count, vk_types::CleanupProcedures& lifetime) {
+    GlobalUniforms build_global_uniforms(vk_types::Context& context, const size_t buffer_count, vk_types::CleanupProcedures& lifetime) {
 
-        glm::mat4 modelview = glm::translate(glm::mat4(1.0f), glm::vec3(0.0f, 0.0f, 3.0f));
+        glm::mat4 modelview = glm::translate(glm::mat4(1.0f), glm::vec3(0.0f, 20.0f, 70.0f));
         BufferedUniformBuffer<glm::mat4> modelview_ubo = BufferedUniformBuffer<glm::mat4>(context, modelview, buffer_count, lifetime);
         BufferedUniformBuffer<glm::vec4> brightness_ubo = BufferedUniformBuffer<glm::vec4>(context, glm::vec4(0.0f, 0.0f, 0.0f, 1.0f), buffer_count, lifetime);
 
@@ -303,7 +429,18 @@ namespace vk_layer {
         return global_buffers;
     }
 
-    DrawState draw(const vk_types::Context& vk_res, const Pipelines& pipelines, const std::vector<geometry::GpuModel>& drawables, const DrawState& state) {
+    SkyboxUniforms build_skybox_uniforms(vk_types::Context& context, const size_t buffer_count, vk_types::CleanupProcedures& lifetime) {
+        glm::mat4 cam_rotation = glm::mat4(1.0f);
+        BufferedUniformBuffer<glm::mat4> cam_rotation_ubo = BufferedUniformBuffer<glm::mat4>(context, cam_rotation, buffer_count, lifetime);
+
+        SkyboxUniforms skybox_buffers = SkyboxUniforms {
+            cam_rotation_ubo
+        };
+
+        return skybox_buffers;
+    }
+
+    DrawState draw(const vk_types::Context& vk_res, const Pipelines& pipelines, const std::vector<geometry::GpuModel>& drawables, const geometry::GpuModel& skybox, const SkyboxTexture& skybox_texture, const DrawState& state) {
         // TODO: Fix this so that it actually does frames in flight. May need first-frame checks for each buffer slot.
         // Wait for previous frame to finish drawing (if applicable). Timeout 1s
         if (state.frame_num >= vk_res.buffer_count) {
@@ -360,12 +497,12 @@ namespace vk_layer {
         // Transition the acquired swapchain image into a drawable format
         // transition_image(cmd, vk_res.swapchain.images[swapchain_image_index], VK_IMAGE_LAYOUT_UNDEFINED, VK_IMAGE_LAYOUT_GENERAL);
 
-        // Make the draw target drawable
+        // Make the draw target drawable by compute shaders
         vk_image::transition_image(cmd, vk_res.draw_target.image, VK_IMAGE_LAYOUT_UNDEFINED, VK_IMAGE_LAYOUT_GENERAL);
-
         draw_background(cmd, vk_res.draw_target, pipelines.compute, state);
 
         vk_image::transition_image(cmd, vk_res.draw_target.image, VK_IMAGE_LAYOUT_GENERAL, VK_IMAGE_LAYOUT_COLOR_ATTACHMENT_OPTIMAL);
+        draw_background_skybox(cmd, vk_res.draw_target, pipelines.skybox, skybox, skybox_texture, state);
 
         for (auto& drawable : drawables) {
             draw_geometry(cmd, vk_res.draw_target, vk_res.depth_buffer, pipelines.graphics, drawable, state);
@@ -418,22 +555,29 @@ namespace vk_layer {
         }
 
         /// Update state for next frame ///
-        glm::mat4 rotated_modelview = glm::rotate(state.buffers.modelview.get(), glm::radians(0.01f), glm::vec3(0.0f, 1.0f, 0.0f));
+        glm::mat4 rotated_modelview = glm::rotate(state.main_dynamic_uniforms.modelview.get(), glm::radians(0.01f), glm::vec3(0.0f, 1.0f, 0.0f));
         glm::vec4 current_brightness = glm::vec4(glm::vec3(glm::sin(glm::radians(((float)state.frame_num) / 200.0f))), 1.0f);
-        GlobalUniforms updated_buffers = state.buffers;
-        // updated_buffers.modelview_ubo = state.buffers.modelview_ubo.update(rotated_modelview);
-        // updated_buffers.brightness_ubo = state.buffers.brightness_ubo.update(current_brightness);
+
+        // Face the same direction as the main rendering camera
+        glm::mat4 cam_rotation = glm::mat4x4(rotated_modelview[0], rotated_modelview[1], rotated_modelview[2], glm::vec4(0.0f, 0.0f, 0.0f, 1.0f));
+
         auto next_frame_index = (state.frame_in_flight + 1) % vk_res.buffer_count;
-        updated_buffers.modelview.set(rotated_modelview);
-        updated_buffers.modelview.push(next_frame_index);
-        updated_buffers.brightness.set(current_brightness);
-        updated_buffers.brightness.push(next_frame_index);
+        GlobalUniforms updated_main_uniforms = state.main_dynamic_uniforms;
+        updated_main_uniforms.modelview.set(rotated_modelview);
+        updated_main_uniforms.modelview.push(next_frame_index);
+        updated_main_uniforms.brightness.set(current_brightness);
+        updated_main_uniforms.brightness.push(next_frame_index);
+
+        SkyboxUniforms updated_skybox_uniforms = state.skybox_dynamic_uniforms;
+        updated_skybox_uniforms.cam_rotation.set(cam_rotation);
+        updated_skybox_uniforms.cam_rotation.push(next_frame_index);
 
         return DrawState {
             .buf_num = static_cast<uint8_t>((state.buf_num + 1u) % vk_res.buffer_count),
             .frame_num = state.frame_num + 1,
             .frame_in_flight = next_frame_index,
-            .buffers = updated_buffers
+            .main_dynamic_uniforms = updated_main_uniforms,
+            .skybox_dynamic_uniforms = updated_skybox_uniforms
         };
     }
 

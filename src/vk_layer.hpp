@@ -73,22 +73,36 @@ namespace vk_layer
         BufferedUniformBuffer<glm::vec4> brightness;
     };
 
+    struct SkyboxUniforms {
+        BufferedUniformBuffer<glm::mat4> cam_rotation;
+    };
+
+    struct SkyboxTexture {
+        vk_types::AllocatedImage allocated_image;
+        VkDescriptorSet descriptor;
+        VkDescriptorSetLayout layout;
+    };
+
     struct Pipelines {
         vk_types::Pipeline graphics;
         vk_types::Pipeline compute;
+        vk_types::Pipeline skybox;
     };
 
     struct DrawState {
         uint8_t buf_num;
         uint64_t frame_num;
         uint64_t frame_in_flight;
-        GlobalUniforms buffers;
+        GlobalUniforms main_dynamic_uniforms;
+        SkyboxUniforms skybox_dynamic_uniforms;
     };
 
-    Pipelines build_pipelines(vk_types::Context& context, const std::vector<VkDescriptorSetLayout>& graphics_descriptor_layouts, vk_types::CleanupProcedures& lifetime);
+    SkyboxTexture upload_skybox(vk_types::Context& context, const vk_image::HostImageRgba& skybox_image, vk_types::CleanupProcedures& lifetime);
+    Pipelines build_pipelines(vk_types::Context& context, const std::vector<VkDescriptorSetLayout>& graphics_descriptor_layouts, const std::vector<VkDescriptorSetLayout>& skybox_descriptor_layouts, vk_types::CleanupProcedures& lifetime);
     GlobalUniforms build_global_uniforms(vk_types::Context& context, const size_t buffer_count, vk_types::CleanupProcedures& lifetime);
+    SkyboxUniforms build_skybox_uniforms(vk_types::Context& context, const size_t buffer_count, vk_types::CleanupProcedures& lifetime);
     void immediate_submit(const vk_types::Context& res, std::function<void(VkCommandBuffer cmd)>&& function);
-    DrawState draw(const vk_types::Context& res, const Pipelines& pipelines, const std::vector<geometry::GpuModel>& drawables, const DrawState& state);
+    DrawState draw(const vk_types::Context& res, const Pipelines& pipelines, const std::vector<geometry::GpuModel>& drawables, const geometry::GpuModel& skybox, const SkyboxTexture& skybox_texture, const DrawState& state);
     void cleanup(vk_types::Context& resources, vk_types::CleanupProcedures& cleanup_procedures);
 } // namespace vk_layer
 

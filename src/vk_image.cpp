@@ -2,6 +2,8 @@
 #include "vk_image.hpp"
 #include "vk_layer.hpp"
 
+#include <array>
+
 #define STB_IMAGE_IMPLEMENTATION
 #include "stb/stb_image.h"
 
@@ -31,14 +33,15 @@ namespace vk_image {
         };
     }
 
+    // Opinionated cubemap load. Expects the cubemap to be laid out in the shape of a cross rotated 90 degrees to the left
     HostImageRgba load_rgba_cubemap(const std::string& filename) {
-        
+        constexpr int face_count = 6;
         int width = 0;
         int height = 0; 
         int channels = 0;
 
         const int FORCE_CHANNELS = 4;
-        stbi_set_flip_vertically_on_load(true);
+        stbi_set_flip_vertically_on_load(false);
         unsigned char* image_data = stbi_load(filename.c_str(), &width, &height, &channels, FORCE_CHANNELS);
 
         if (!image_data) {
@@ -46,12 +49,29 @@ namespace vk_image {
             exit(EXIT_FAILURE);
         }
 
-        std::vector<unsigned char> image_data_vec(image_data, image_data + (width * height * FORCE_CHANNELS));
+        size_t face_width = width / 4;
+        size_t face_height = height / 3;
+
+        std::vector<unsigned char> raw_image_data_vec(image_data, image_data + (width * height * FORCE_CHANNELS));
+        std::vector<unsigned char> face_ordered_layout_image_data;
+        face_ordered_layout_image_data.reserve(face_width * face_height * FORCE_CHANNELS * face_count);
+
+        // Make a pointer window that slides over each face in upload order
+        std::array<size_t, face_count> left_offsets = {{2 * face_width * FORCE_CHANNELS, 0 * face_width * FORCE_CHANNELS, 1 * face_width * FORCE_CHANNELS, 1 * face_width * FORCE_CHANNELS, 1 * face_width * FORCE_CHANNELS, 3 * face_width * FORCE_CHANNELS}};
+        std::array<size_t, face_count> top_offsets = {{1 * face_height, 1 * face_height, 0 * face_height, 2 * face_height, 1 * face_height, 1 * face_height}};
+
+        for (size_t face = 0; face < face_count; ++face) {
+            for (size_t current_row = top_offsets[face]; current_row < top_offsets[face] + face_height; ++current_row) {
+                auto begin_row_data = raw_image_data_vec.begin() + left_offsets[face] + current_row * (size_t) width * FORCE_CHANNELS;
+                auto end_row_data = begin_row_data + face_width * FORCE_CHANNELS;
+                face_ordered_layout_image_data.insert(face_ordered_layout_image_data.end(), begin_row_data, end_row_data);
+            }
+        }
 
         stbi_image_free(image_data);
 
         return HostImageRgba{
-            HostImage { static_cast<uint32_t>(width), static_cast<uint32_t>(height), image_data_vec, Representation::Cubemap }
+            HostImage { static_cast<uint32_t>(face_width), static_cast<uint32_t>(face_height), face_ordered_layout_image_data, Representation::Cubemap }
         };
     }
 
@@ -85,24 +105,33 @@ namespace vk_image {
         vk_layer::immediate_submit(context, [&](VkCommandBuffer cmd) {
             transition_image(cmd, allocated_image.image, VK_IMAGE_LAYOUT_UNDEFINED, VK_IMAGE_LAYOUT_TRANSFER_DST_OPTIMAL);
 
-            VkBufferImageCopy region{};
-            region.bufferOffset = 0;
-            region.bufferRowLength = 0;
-            region.bufferImageHeight = 0;
+            std::vector<VkBufferImageCopy> regions;
+            size_t face_count = image.image.representation == vk_image::Representation::Cubemap ? 6 : 1;
+            regions.reserve(face_count);
 
-            region.imageSubresource.aspectMask = VK_IMAGE_ASPECT_COLOR_BIT;
-            region.imageSubresource.mipLevel = 0;
-            region.imageSubresource.baseArrayLayer = 0;
-            region.imageSubresource.layerCount = 1;
+            for (size_t face = 0; face < face_count; ++face) {
+                VkDeviceSize buffer_face_offset = face * (image.image.data.size() / 6);
+                VkBufferImageCopy region{};
+                region.bufferOffset = 0;
+                region.bufferRowLength = 0;
+                region.bufferImageHeight = 0;
 
-            region.imageOffset = {0, 0, 0};
-            region.imageExtent = {
-                extent.width,
-                extent.height,
-                1
-            };
+                region.imageSubresource.aspectMask = VK_IMAGE_ASPECT_COLOR_BIT;
+                region.imageSubresource.mipLevel = 0;
+                region.imageSubresource.baseArrayLayer = 0;
+                region.imageSubresource.layerCount = face + 1;
 
-            vkCmdCopyBufferToImage(cmd, staging.buffer, allocated_image.image, VK_IMAGE_LAYOUT_TRANSFER_DST_OPTIMAL, 1, &region);
+                region.imageOffset = {0, 0, 0};
+                region.imageExtent = {
+                    extent.width,
+                    extent.height,
+                    1
+                };
+
+                regions.push_back(region);
+            }
+
+            vkCmdCopyBufferToImage(cmd, staging.buffer, allocated_image.image, VK_IMAGE_LAYOUT_TRANSFER_DST_OPTIMAL, regions.size(), regions.data());
             // Transition image to requested layout after upload is complete
             transition_image(cmd, allocated_image.image, VK_IMAGE_LAYOUT_TRANSFER_DST_OPTIMAL, desired_layout);
         });
@@ -322,7 +351,7 @@ namespace vk_image {
         image_view_create_info.subresourceRange.baseMipLevel = 0;
         image_view_create_info.subresourceRange.levelCount = miplevels;
         image_view_create_info.subresourceRange.baseArrayLayer = 0;
-        image_view_create_info.subresourceRange.layerCount = 1;
+        image_view_create_info.subresourceRange.layerCount = representation == Representation::Cubemap ? 6 : 1;
 
         if (vkCreateImageView(device, &image_view_create_info, nullptr, &image_view) != VK_SUCCESS) {
             printf("Unable to create image view");
