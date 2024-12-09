@@ -418,7 +418,7 @@ namespace vk_layer {
 
     GlobalUniforms build_global_uniforms(vk_types::Context& context, const size_t buffer_count, vk_types::CleanupProcedures& lifetime) {
 
-        glm::mat4 view = glm::translate(glm::mat4(1.0f), glm::vec3(0.0f, -10.0f, 60.0f));
+        glm::mat4 view = glm::translate(glm::mat4(1.0f), glm::vec3(0.0f, -10.0f, 100.0f));
         BufferedUniform<glm::mat4> view_ubo = BufferedUniform<glm::mat4>(context, view, buffer_count, lifetime);
         
         glm::mat4 projection = glm::transpose(glm::perspective(45.0f, 4.0f/3.0f, 1.0f, 1000.0f));
@@ -577,7 +577,7 @@ namespace vk_layer {
         }
 
         /// Update state for next frame ///
-        glm::mat4 rotated_view = glm::rotate(state.main_dynamic_uniforms.view.get(), glm::radians(0.01f), glm::vec3(0.0f, 1.0f, 0.0f));
+        glm::mat4 rotated_view = glm::rotate(state.main_dynamic_uniforms.view.get(), glm::radians(0.01f), glm::vec3(1.0f, 1.0f, 0.0f));
         glm::vec4 current_brightness = glm::vec4(glm::vec3(glm::sin(glm::radians(((float)state.frame_num) / 200.0f))), 1.0f);
 
         // Face the same direction as the main rendering camera
