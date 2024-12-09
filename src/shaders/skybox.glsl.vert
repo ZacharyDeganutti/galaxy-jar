@@ -28,15 +28,21 @@ mat4x4 cam_rotation = ubo.cam_rotation_in * transpose(mat4x4(
 	0, 0, 0, 1
 ));
 
-mat4x4 camera = transpose(mat4x4(
+mat4x4 flip_y = transpose(mat4x4(
 						1, 0, 0, 0,
 						0, -1, 0, 0,
 						0, 0, 1, 0,
 						0, 0, 0, 1));
 
+mat4x4 flip_x = transpose(mat4x4(
+						-1, 0, 0, 0,
+						0, 1, 0, 0,
+						0, 0, 1, 0,
+						0, 0, 0, 1));
+
 mat4x4 cheat = transpose(mat4x4(
 						-1, 0, 0, 0,
-						0, -1, 0, 0,
+						0, 1, 0, 0,
 						0, 0, 1, 0,
 						0, 0, 0, 1));
 
@@ -47,8 +53,11 @@ mat4x4 proj_ex = transpose(mat4x4(inv_aspect/tan_half_fov, 0, 0, 0,
 
 void main() 
 {
-	//output the position of each vertex
-	gl_Position = proj_ex * camera * vec4(vertex, 1.0f);
-	//gl_Position = proj_ex * vec4(vertex, 1.0f);
-	normal_interp = normalize(cam_rotation * cheat * gl_Position).xyz;
+	// Project the vertex and flip it across the y to match vulkan clip space
+	// (can probably cheat by flipping the winding order of the pipeline so everything just 'works' without any y flipping)
+	gl_Position = flip_y * proj_ex * vec4(vertex, 1.0f);
+	// Piggyback on the frustum shape created by projection to generate a bunch of vectors to sample the skybox
+	// Skybox is oriented up in the y direction unlike vulkan clip space, so flip back
+	// Flip across the x direction because we want to rotate the opposite
+	normal_interp = normalize(cam_rotation * gl_Position).xyz;
 }

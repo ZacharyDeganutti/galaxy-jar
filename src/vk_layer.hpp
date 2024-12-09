@@ -12,18 +12,20 @@
 
 #include "vk_types.hpp"
 #include "vk_buffer.hpp"
+#include "vk_descriptors.hpp"
 #include "geometry.hpp"
 #include "glmvk.hpp"
 
 namespace vk_layer
 {
     template <class T>
-    struct BufferedUniformBuffer {
+    struct BufferedUniform {
         private:
         T value;
         std::vector<vk_types::UniformInfo<T>> uniform;
         public:
-        BufferedUniformBuffer(vk_types::Context& vk_context, const T initial_value, const size_t buffer_count, vk_types::CleanupProcedures& lifetime) : value(initial_value), uniform(std::vector<vk_types::UniformInfo<T>>()) {
+        BufferedUniform() {}
+        BufferedUniform(vk_types::Context& vk_context, const T initial_value, const size_t buffer_count, vk_types::CleanupProcedures& lifetime) : value(initial_value), uniform(std::vector<vk_types::UniformInfo<T>>()) {
             const std::vector<VkDescriptorType> descriptor_types = { static_cast<VkDescriptorType>(vk_descriptors::DescriptorType::Uniform) };
             auto descriptor_layout = vk_descriptors::init_descriptor_layout(vk_context.device, VK_SHADER_STAGE_ALL_GRAPHICS, descriptor_types, vk_context.cleanup_procedures);
             uniform.reserve(buffer_count);
@@ -68,13 +70,18 @@ namespace vk_layer
         }
     };
 
+    struct Drawable {
+        geometry::GpuModel gpu_model;
+        BufferedUniform<glm::mat4> transform;
+    };
+
     struct GlobalUniforms {
-        BufferedUniformBuffer<glm::mat4> modelview;
-        BufferedUniformBuffer<glm::vec4> brightness;
+        BufferedUniform<glm::mat4> view;
+        BufferedUniform<glm::mat4> projection;
     };
 
     struct SkyboxUniforms {
-        BufferedUniformBuffer<glm::mat4> cam_rotation;
+        BufferedUniform<glm::mat4> cam_rotation;
     };
 
     struct SkyboxTexture {
@@ -101,8 +108,9 @@ namespace vk_layer
     Pipelines build_pipelines(vk_types::Context& context, const std::vector<VkDescriptorSetLayout>& graphics_descriptor_layouts, const std::vector<VkDescriptorSetLayout>& skybox_descriptor_layouts, vk_types::CleanupProcedures& lifetime);
     GlobalUniforms build_global_uniforms(vk_types::Context& context, const size_t buffer_count, vk_types::CleanupProcedures& lifetime);
     SkyboxUniforms build_skybox_uniforms(vk_types::Context& context, const size_t buffer_count, vk_types::CleanupProcedures& lifetime);
+    Drawable make_drawable(vk_types::Context& context, const geometry::HostModel& model_data);
     void immediate_submit(const vk_types::Context& res, std::function<void(VkCommandBuffer cmd)>&& function);
-    DrawState draw(const vk_types::Context& res, const Pipelines& pipelines, const std::vector<geometry::GpuModel>& drawables, const geometry::GpuModel& skybox, const SkyboxTexture& skybox_texture, const DrawState& state);
+    DrawState draw(const vk_types::Context& res, const Pipelines& pipelines, const std::vector<Drawable>& drawables, const Drawable& skybox, const SkyboxTexture& skybox_texture, const DrawState& state);
     void cleanup(vk_types::Context& resources, vk_types::CleanupProcedures& cleanup_procedures);
 } // namespace vk_layer
 

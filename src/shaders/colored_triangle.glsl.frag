@@ -7,16 +7,10 @@ layout (location = 4) in vec2 tex_interp;
 //output write
 layout (location = 0) out vec4 frag_color;
 
-layout(set = 1, binding = 0) uniform UniformBufferObject {
-	vec4 brightness;
-} ubo;
-
 layout(set = 2, binding = 0) uniform sampler2D diffuse_tex;
 
 void main() 
 {
-	//return normal
-	// frag_color = ubo.brightness * vec4((normalize(normal_interp) * 0.5f ) + 0.5f, 1.0);
 	vec4 diffuse = texture(diffuse_tex, tex_interp);
 	if (diffuse.a < 0.1) {
 		discard;

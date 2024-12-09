@@ -9,6 +9,21 @@
 #include "vk_types.hpp"
 
 namespace geometry {
+    enum class Direction {
+        Left,
+        Right,
+        Up,
+        Down,
+        Forward,
+        Back
+    };
+
+    struct AxisAlignedBasis {
+        Direction x;
+        Direction y;
+        Direction z;
+    };
+
     struct TexturedVertex {
         glm::vec3 position;
         glm::vec3 normal;
@@ -32,6 +47,7 @@ namespace geometry {
     };
 
     struct HostModel {
+        AxisAlignedBasis basis;
         IndexedVertexData vertex_attributes;
         std::vector<MaterialProperties> materials;
         std::vector<std::optional<vk_image::HostImageRgba>> diffuse_textures;
@@ -47,8 +63,10 @@ namespace geometry {
 
     // Accepts a file name, and a path to search for the file and corresponding material as arguments
     // May throw an exception on failure
-    HostModel load_obj_model(std::string file_name, std::string base_path);
+    HostModel load_obj_model(std::string file_name, std::string base_path, AxisAlignedBasis coordinate_system);
 
     GpuModel upload_model(vk_types::Context& context, const HostModel& host_model);
+
+    glm::mat4 make_x_right_y_up_z_forward_transform(AxisAlignedBasis original_basis);
 }
 #endif

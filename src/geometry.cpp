@@ -178,7 +178,7 @@ namespace geometry {
         return indexed_data;
     }
 
-    HostModel load_obj_model(std::string file_name, std::string base_path) {
+    HostModel load_obj_model(std::string file_name, std::string base_path, AxisAlignedBasis coordinate_system) {
         tinyobj::attrib_t attrib = {};
         std::vector<tinyobj::shape_t> shapes;
         std::vector<tinyobj::material_t> materials;
@@ -193,6 +193,8 @@ namespace geometry {
         raw_positions.reserve(attrib.vertices.size() / 3);
         for(int index = 0; index < (attrib.vertices.size()/3); ++index) {
             glm::vec3 position = glm::vec3(attrib.vertices[3 * index], attrib.vertices[(3 * index) + 1], attrib.vertices[(3 * index) + 2]);
+            // Something I'm doing in model loading is causing this to reflect over the x-axis, so give it a flip here to set it right
+            position = glm::reflect(position, glm::vec3(1.0f, 0.0f, 0.0f));
             raw_positions.push_back(position);
         }
         
@@ -235,6 +237,7 @@ namespace geometry {
             }
         }
 
+        model.basis = coordinate_system;
         model.materials = material_properties;
         model.diffuse_textures = diffuse_textures;
 
@@ -298,5 +301,72 @@ namespace geometry {
         };
 
         return gpu_model;
+    }
+
+    glm::mat4 make_x_right_y_up_z_forward_transform(AxisAlignedBasis original_basis) {
+        glm::mat4 identity = glm::mat4(1.0);
+        glm::mat4 transform = glm::mat4(1.0);
+
+        // Setup x component
+        if (original_basis.x == Direction::Right) {
+            transform[0] = identity[0];
+        }
+        else if (original_basis.x == Direction::Left) {
+            transform[0] = identity[0] * -1.0f;
+        }
+        else if (original_basis.x == Direction::Up) {
+            transform[0] = identity[1];
+        }
+        else if (original_basis.x == Direction::Down) {
+            transform[0] = identity[1] * -1.0f;
+        }
+        else if (original_basis.x == Direction::Forward) {
+            transform[0] = identity[2];
+        }
+        else { // backward
+            transform[0] = identity[2] * -1.0f;
+        }
+
+        // Setup y component
+        if (original_basis.y == Direction::Right) {
+            transform[1] = identity[0];
+        }
+        else if (original_basis.y == Direction::Left) {
+            transform[1] = identity[0] * -1.0f;
+        }
+        else if (original_basis.y == Direction::Up) {
+            transform[1] = identity[1];
+        }
+        else if (original_basis.y == Direction::Down) {
+            transform[1] = identity[1] * -1.0f;
+        }
+        else if (original_basis.y == Direction::Forward) {
+            transform[1] = identity[2];
+        }
+        else { // backward
+            transform[1] = identity[2] * -1.0f;
+        }
+
+        // Setup z component
+        if (original_basis.z == Direction::Right) {
+            transform[2] = identity[0];
+        }
+        else if (original_basis.z == Direction::Left) {
+            transform[2] = identity[0] * -1.0f;
+        }
+        else if (original_basis.z == Direction::Up) {
+            transform[2] = identity[1];
+        }
+        else if (original_basis.z == Direction::Down) {
+            transform[2] = identity[1] * -1.0f;
+        }
+        else if (original_basis.z == Direction::Forward) {
+            transform[2] = identity[2];
+        }
+        else { // backward
+            transform[2] = identity[2] * -1.0f;
+        }
+
+        return transform;
     }
 }

@@ -393,7 +393,7 @@ namespace vk_pipeline {
         rasterization_info.lineWidth = 1.0f;
         // Culling and winding order
         rasterization_info.cullMode = VK_CULL_MODE_BACK_BIT;
-        rasterization_info.frontFace = VK_FRONT_FACE_CLOCKWISE;
+        rasterization_info.frontFace = VK_FRONT_FACE_COUNTER_CLOCKWISE;
 
         // Multisampling configuration for stuff like AA. Disabled by default
         multisampling_info = {};

@@ -123,7 +123,7 @@ namespace vk_layer {
             vkCmdDispatch(cmd, std::ceil(background_target.image_extent.width / 16.0), std::ceil(background_target.image_extent.height / 16.0), 1);
         }
 
-        void draw_background_skybox(const VkCommandBuffer cmd, const vk_types::AllocatedImage& background_target, const vk_types::Pipeline& pipeline, const geometry::GpuModel& cube_model, const SkyboxTexture& texture, const DrawState& state) {
+        void draw_background_skybox(const VkCommandBuffer cmd, const vk_types::AllocatedImage& background_target, const vk_types::Pipeline& pipeline, const Drawable& cube_model, const SkyboxTexture& texture, const DrawState& state) {
             // Set up draw target attachment
             VkRenderingAttachmentInfo color_attachment = {}; 
             color_attachment.sType = VK_STRUCTURE_TYPE_RENDERING_ATTACHMENT_INFO;
@@ -170,7 +170,7 @@ namespace vk_layer {
             vkCmdSetScissor(cmd, 0, 1, &scissor);
 
             // Draw all buffers
-            for (int piece = 0; piece < cube_model.vertex_buffers.size(); ++piece) {
+            for (int piece = 0; piece < cube_model.gpu_model.vertex_buffers.size(); ++piece) {
                 // Bind up the descriptors to match each piece
                 std::vector<VkDescriptorSet> skybox_descriptor_sets = {
                     state.skybox_dynamic_uniforms.cam_rotation.get_descriptor_set(state.frame_in_flight),
@@ -179,7 +179,7 @@ namespace vk_layer {
                 vkCmdBindDescriptorSets(cmd, pipeline.bind_point, pipeline.layout, 0, skybox_descriptor_sets.size(), skybox_descriptor_sets.data(), 0, nullptr);
 
                 // Bind the vertex buffers and fire off an indexed draw
-                const vk_types::GpuMeshBuffers& buffer_group = cube_model.vertex_buffers[piece];
+                const vk_types::GpuMeshBuffers& buffer_group = cube_model.gpu_model.vertex_buffers[piece];
                 vkCmdBindIndexBuffer(cmd, buffer_group.index_buffer.buffer, 0, VK_INDEX_TYPE_UINT32);
                 std::array<VkBuffer, 3> buffer_handles {{
                     buffer_group.position_buffer.vertex_buffer.buffer,
@@ -194,7 +194,7 @@ namespace vk_layer {
             vkCmdEndRendering(cmd);
         }
 
-        void draw_geometry(const VkCommandBuffer cmd, const vk_types::AllocatedImage& draw_target, const vk_types::AllocatedImage& depth_buffer, const vk_types::Pipeline& pipeline, const geometry::GpuModel& drawable, const DrawState& state) {
+        void draw_geometry(const VkCommandBuffer cmd, const vk_types::AllocatedImage& draw_target, const vk_types::AllocatedImage& depth_buffer, const vk_types::Pipeline& pipeline, const Drawable& drawable, const DrawState& state) {
             //begin a render pass  connected to our draw image
 
             // Set up draw target attachment
@@ -263,17 +263,18 @@ namespace vk_layer {
             clear_attachments(cmd, attachments, extents);
             
             // Draw all buffers
-            for (int piece = 0; piece < drawable.vertex_buffers.size(); ++piece) {
+            for (int piece = 0; piece < drawable.gpu_model.vertex_buffers.size(); ++piece) {
                 // Bind up the descriptors to match each piece
                 std::vector<VkDescriptorSet> graphics_descriptor_sets = { 
-                    state.main_dynamic_uniforms.modelview.get_descriptor_set(state.frame_in_flight), 
-                    state.main_dynamic_uniforms.brightness.get_descriptor_set(state.frame_in_flight), 
-                    drawable.diffuse_texture_descriptors[piece] 
+                    state.main_dynamic_uniforms.view.get_descriptor_set(state.frame_in_flight), 
+                    state.main_dynamic_uniforms.projection.get_descriptor_set(state.frame_in_flight), 
+                    drawable.gpu_model.diffuse_texture_descriptors[piece],
+                    drawable.transform.get_descriptor_set(state.frame_in_flight)
                 };
                 vkCmdBindDescriptorSets(cmd, pipeline.bind_point, pipeline.layout, 0, graphics_descriptor_sets.size(), graphics_descriptor_sets.data(), 0, nullptr);
 
                 // Bind the vertex buffers and fire off an indexed draw
-                const vk_types::GpuMeshBuffers& buffer_group = drawable.vertex_buffers[piece];
+                const vk_types::GpuMeshBuffers& buffer_group = drawable.gpu_model.vertex_buffers[piece];
                 vkCmdBindIndexBuffer(cmd, buffer_group.index_buffer.buffer, 0, VK_INDEX_TYPE_UINT32);
                 std::array<VkBuffer, 3> buffer_handles {{
                     buffer_group.position_buffer.vertex_buffer.buffer,
@@ -387,7 +388,7 @@ namespace vk_layer {
         rasterization_info.polygonMode = VK_POLYGON_MODE_FILL;
         rasterization_info.lineWidth = 1.0f;
         rasterization_info.cullMode = VK_CULL_MODE_FRONT_BIT;
-        rasterization_info.frontFace = VK_FRONT_FACE_CLOCKWISE;
+        rasterization_info.frontFace = VK_FRONT_FACE_COUNTER_CLOCKWISE;
         skybox_render_pipeline_builder.override(rasterization_info);
         // Disable depth testing
         VkPipelineDepthStencilStateCreateInfo depth_info = {};
@@ -417,13 +418,21 @@ namespace vk_layer {
 
     GlobalUniforms build_global_uniforms(vk_types::Context& context, const size_t buffer_count, vk_types::CleanupProcedures& lifetime) {
 
-        glm::mat4 modelview = glm::translate(glm::mat4(1.0f), glm::vec3(0.0f, 20.0f, 70.0f));
-        BufferedUniformBuffer<glm::mat4> modelview_ubo = BufferedUniformBuffer<glm::mat4>(context, modelview, buffer_count, lifetime);
-        BufferedUniformBuffer<glm::vec4> brightness_ubo = BufferedUniformBuffer<glm::vec4>(context, glm::vec4(0.0f, 0.0f, 0.0f, 1.0f), buffer_count, lifetime);
+        glm::mat4 view = glm::translate(glm::mat4(1.0f), glm::vec3(0.0f, -10.0f, 60.0f));
+        BufferedUniform<glm::mat4> view_ubo = BufferedUniform<glm::mat4>(context, view, buffer_count, lifetime);
+        
+        glm::mat4 projection = glm::transpose(glm::perspective(45.0f, 4.0f/3.0f, 1.0f, 1000.0f));
+        projection = glm::transpose(projection);
+        glm::mat4 vulkan_flip = glm::mat4(  1.0f, 0.0f, 0.0f, 0.0f,
+                                            0.0f, -1.0f, 0.0f, 0.0f,
+                                            0.0f, 0.0f, 1.0f, 0.0f,
+                                            0.0f, 0.0f, 0.0f, 1.0f);
+        projection = projection * vulkan_flip;
+        BufferedUniform<glm::mat4> projection_ubo = BufferedUniform<glm::mat4>(context, projection, buffer_count, lifetime);
 
         GlobalUniforms global_buffers = GlobalUniforms {
-            modelview_ubo,
-            brightness_ubo,
+            view_ubo,
+            projection_ubo,
         };
 
         return global_buffers;
@@ -431,7 +440,7 @@ namespace vk_layer {
 
     SkyboxUniforms build_skybox_uniforms(vk_types::Context& context, const size_t buffer_count, vk_types::CleanupProcedures& lifetime) {
         glm::mat4 cam_rotation = glm::mat4(1.0f);
-        BufferedUniformBuffer<glm::mat4> cam_rotation_ubo = BufferedUniformBuffer<glm::mat4>(context, cam_rotation, buffer_count, lifetime);
+        BufferedUniform<glm::mat4> cam_rotation_ubo = BufferedUniform<glm::mat4>(context, cam_rotation, buffer_count, lifetime);
 
         SkyboxUniforms skybox_buffers = SkyboxUniforms {
             cam_rotation_ubo
@@ -440,7 +449,20 @@ namespace vk_layer {
         return skybox_buffers;
     }
 
-    DrawState draw(const vk_types::Context& vk_res, const Pipelines& pipelines, const std::vector<geometry::GpuModel>& drawables, const geometry::GpuModel& skybox, const SkyboxTexture& skybox_texture, const DrawState& state) {
+    Drawable make_drawable(vk_types::Context& context, const geometry::HostModel& model_data) {
+        geometry::GpuModel drawable_gpu_model = geometry::upload_model(context, model_data);
+        // Set up transform so the preferred coordinate system can be used from here. Build the uniform resources with it
+        glm::mat4 transform = geometry::make_x_right_y_up_z_forward_transform(model_data.basis);
+        auto buffered_transform = BufferedUniform<glm::mat4>(context, transform, context.buffer_count, context.cleanup_procedures);
+
+        Drawable drawable = {
+            drawable_gpu_model,
+            buffered_transform
+        };
+        return drawable;
+    }
+
+    DrawState draw(const vk_types::Context& vk_res, const Pipelines& pipelines, const std::vector<Drawable>& drawables, const Drawable& skybox, const SkyboxTexture& skybox_texture, const DrawState& state) {
         // TODO: Fix this so that it actually does frames in flight. May need first-frame checks for each buffer slot.
         // Wait for previous frame to finish drawing (if applicable). Timeout 1s
         if (state.frame_num >= vk_res.buffer_count) {
@@ -555,18 +577,16 @@ namespace vk_layer {
         }
 
         /// Update state for next frame ///
-        glm::mat4 rotated_modelview = glm::rotate(state.main_dynamic_uniforms.modelview.get(), glm::radians(0.01f), glm::vec3(0.0f, 1.0f, 0.0f));
+        glm::mat4 rotated_view = glm::rotate(state.main_dynamic_uniforms.view.get(), glm::radians(0.01f), glm::vec3(0.0f, 1.0f, 0.0f));
         glm::vec4 current_brightness = glm::vec4(glm::vec3(glm::sin(glm::radians(((float)state.frame_num) / 200.0f))), 1.0f);
 
         // Face the same direction as the main rendering camera
-        glm::mat4 cam_rotation = glm::mat4x4(rotated_modelview[0], rotated_modelview[1], rotated_modelview[2], glm::vec4(0.0f, 0.0f, 0.0f, 1.0f));
+        glm::mat4 cam_rotation = glm::mat4x4(rotated_view[0], rotated_view[1], rotated_view[2], glm::vec4(0.0f, 0.0f, 0.0f, 1.0f));
 
         auto next_frame_index = (state.frame_in_flight + 1) % vk_res.buffer_count;
         GlobalUniforms updated_main_uniforms = state.main_dynamic_uniforms;
-        updated_main_uniforms.modelview.set(rotated_modelview);
-        updated_main_uniforms.modelview.push(next_frame_index);
-        updated_main_uniforms.brightness.set(current_brightness);
-        updated_main_uniforms.brightness.push(next_frame_index);
+        updated_main_uniforms.view.set(rotated_view);
+        updated_main_uniforms.view.push(next_frame_index);
 
         SkyboxUniforms updated_skybox_uniforms = state.skybox_dynamic_uniforms;
         updated_skybox_uniforms.cam_rotation.set(cam_rotation);
