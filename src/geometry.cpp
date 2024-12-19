@@ -219,8 +219,12 @@ namespace geometry {
         model.vertex_attributes = indexed_geometry;
 
         // Extract material data we care about from pieces
-        std::vector<std::optional<vk_image::HostImageRgba>> diffuse_textures;
+        std::vector<std::optional<vk_image::HostImage>> diffuse_textures;
         diffuse_textures.resize(indexed_geometry.pieces.size());
+        std::vector<std::optional<vk_image::HostImage>> specular_textures;
+        specular_textures.resize(indexed_geometry.pieces.size());
+        std::vector<std::optional<vk_image::HostImage>> normal_textures;
+        normal_textures.resize(indexed_geometry.pieces.size());
 
         std::vector<MaterialProperties> material_properties;
         material_properties.resize(indexed_geometry.pieces.size());
@@ -235,12 +239,28 @@ namespace geometry {
             } else {
                 diffuse_textures[material_index] = vk_image::load_rgba_image(base_path + "/" + diffuse_texname);
             }
+
+            std::string specular_texname = materials[material_index].specular_texname;
+            if (specular_texname.empty()) {
+                specular_textures[material_index] = std::nullopt;
+            } else {
+                specular_textures[material_index] = vk_image::load_gltf_specular_image_as_rg(base_path + "/" + specular_texname);
+            }
+
+            std::string normal_texname = materials[material_index].bump_texname;
+            if (normal_texname.empty()) {
+                normal_textures[material_index] = std::nullopt;
+            } else {
+                normal_textures[material_index] = vk_image::load_rg_image(base_path + "/" + normal_texname);
+            }
         }
 
         model.basis = coordinate_system;
         model.materials = material_properties;
         model.diffuse_textures = diffuse_textures;
-
+        model.specular_textures = specular_textures;
+        model.normal_textures = normal_textures;
+        
         return model;
     }
 
@@ -251,37 +271,96 @@ namespace geometry {
         VkDescriptorSetLayout texture_layout = vk_descriptors::init_descriptor_layout(context.device, VK_SHADER_STAGE_ALL_GRAPHICS, texture_descriptor_types, context.cleanup_procedures);
 
         // Upload textures for all materials
-        VkSampler diffuse_texture_sampler = vk_image::init_linear_sampler(context);
+        VkSampler linear_texture_sampler = vk_image::init_linear_sampler(context);
+
         std::vector<VkDescriptorSet> diffuse_texture_descriptors;
         diffuse_texture_descriptors.reserve(host_model.diffuse_textures.size());
-        // for (auto& diffuse_texture : host_model.diffuse_textures) {
+
+        std::vector<VkDescriptorSet> specular_texture_descriptors;
+        specular_texture_descriptors.reserve(host_model.specular_textures.size());
+
+        std::vector<VkDescriptorSet> normal_texture_descriptors;
+        normal_texture_descriptors.reserve(host_model.normal_textures.size());
+
         for (auto& piece : host_model.vertex_attributes.pieces) {
+            vk_descriptors::DescriptorAllocator descriptor_allocator = {};
+            // Diffuse texture
             auto& diffuse_texture = host_model.diffuse_textures[piece.material_index];
             vk_types::AllocatedImage diffuse_texture_image = {};
             if (diffuse_texture.has_value()) {
-                diffuse_texture_image = vk_image::upload_rgba_image_mipmapped(context, diffuse_texture.value(), VK_IMAGE_LAYOUT_SHADER_READ_ONLY_OPTIMAL);
+                diffuse_texture_image = vk_image::upload_image_mipmapped(context, diffuse_texture.value(), VK_FORMAT_R8G8B8A8_SRGB, VK_IMAGE_LAYOUT_SHADER_READ_ONLY_OPTIMAL);
             } else {
                 // TODO: Make texture fallback common so we don't need tons of random little 1 pixel image allocations.
                 // Make a white texture that samples a value of 1.0 for all channels so it acts as a passthrough when multiplying against diffuse parameters.
-                vk_image::HostImageRgba white_pixel_texture = vk_image::HostImageRgba{
-                    .image = vk_image::HostImage {
-                        .width = 1,
-                        .height = 1,
-                        .data = {255, 255, 255, 255},  // RGBA: Full brightness white
-                        .representation = vk_image::Representation::Flat
-                    }
+                vk_image::HostImage white_pixel_texture = vk_image::HostImage {
+                    .width = 1,
+                    .height = 1,
+                    .data = {255, 255, 255, 255},  // RGBA: Full brightness white
+                    .representation = vk_image::Representation::Flat
                 };
-                diffuse_texture_image = vk_image::upload_rgba_image(context, white_pixel_texture, VK_IMAGE_LAYOUT_SHADER_READ_ONLY_OPTIMAL);
+                diffuse_texture_image = vk_image::upload_image(context, white_pixel_texture, VK_FORMAT_R8G8B8A8_SRGB, VK_IMAGE_LAYOUT_SHADER_READ_ONLY_OPTIMAL);
             }
-            vk_descriptors::DescriptorAllocator descriptor_allocator = {};
+            
             VkDescriptorSet diffuse_texture_descriptor = vk_descriptors::init_combined_image_sampler_descriptors(context.device,
                 diffuse_texture_image.image_view,
-                diffuse_texture_sampler,
+                linear_texture_sampler,
                 texture_layout,
                 descriptor_allocator,
                 context.cleanup_procedures);
             
             diffuse_texture_descriptors.push_back(diffuse_texture_descriptor);
+
+            // Specular texture
+            auto& specular_texture = host_model.specular_textures[piece.material_index];
+            vk_types::AllocatedImage specular_texture_image = {};
+            if (specular_texture.has_value()) {
+                specular_texture_image = vk_image::upload_image_mipmapped(context, specular_texture.value(), VK_FORMAT_R8G8_UNORM, VK_IMAGE_LAYOUT_SHADER_READ_ONLY_OPTIMAL);
+            } else {
+                // TODO: Make texture fallback common so we don't need tons of random little 1 pixel image allocations.
+                // Make a white texture that samples a value of 1.0
+                // TODO: Find best default value for specular
+                vk_image::HostImage white_pixel_texture = vk_image::HostImage {
+                    .width = 1,
+                    .height = 1,
+                    .data = {255, 255},  // RGBA: Full brightness white
+                    .representation = vk_image::Representation::Flat
+                };
+
+                specular_texture_image = vk_image::upload_image(context, white_pixel_texture, VK_FORMAT_R8G8_UNORM, VK_IMAGE_LAYOUT_SHADER_READ_ONLY_OPTIMAL);
+            }
+            VkDescriptorSet specular_texture_descriptor = vk_descriptors::init_combined_image_sampler_descriptors(context.device,
+                specular_texture_image.image_view,
+                linear_texture_sampler,
+                texture_layout,
+                descriptor_allocator,
+                context.cleanup_procedures);
+            
+            specular_texture_descriptors.push_back(specular_texture_descriptor);
+
+            // Normal texture
+            auto& normal_texture = host_model.normal_textures[piece.material_index];
+            vk_types::AllocatedImage normal_texture_image = {};
+            if (normal_texture.has_value()) {
+                normal_texture_image = vk_image::upload_image_mipmapped(context, normal_texture.value(), VK_FORMAT_R8G8_UNORM, VK_IMAGE_LAYOUT_SHADER_READ_ONLY_OPTIMAL);
+            } else {
+                // TODO: Make texture fallback common so we don't need tons of random little 1 pixel image allocations.
+                // Make a straight-up normal
+                vk_image::HostImage gray_pixel_texture = vk_image::HostImage {
+                    .width = 1,
+                    .height = 1,
+                    .data = {127, 127},  // RGBA: Flat normal
+                    .representation = vk_image::Representation::Flat
+                };
+                normal_texture_image = vk_image::upload_image(context, gray_pixel_texture, VK_FORMAT_R8G8_UNORM, VK_IMAGE_LAYOUT_SHADER_READ_ONLY_OPTIMAL);
+            }
+            VkDescriptorSet normal_texture_descriptor = vk_descriptors::init_combined_image_sampler_descriptors(context.device,
+                normal_texture_image.image_view,
+                linear_texture_sampler,
+                texture_layout,
+                descriptor_allocator,
+                context.cleanup_procedures);
+            
+            normal_texture_descriptors.push_back(normal_texture_descriptor);
         }
 
         // Upload material properties for all materials
@@ -297,7 +376,9 @@ namespace geometry {
             mesh_resources,
             material_buffers,
             texture_layout,
-            diffuse_texture_descriptors
+            diffuse_texture_descriptors,
+            normal_texture_descriptors,
+            specular_texture_descriptors,
         };
 
         return gpu_model;

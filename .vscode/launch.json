@@ -7,6 +7,7 @@
   // https://go.microsoft.com/fwlink/?linkid=830387
   "version": "0.2.0",
   "configurations": [
+
     {
       "name": "C++ makefile debug launch",
       "type": "cppvsdbg",
@@ -14,6 +15,14 @@
       "program": "${workspaceFolder}/build/Debug/bin/galaxy-jar.exe",
       "preLaunchTask": "makefile debug build",
       "cwd": "${workspaceFolder}/build/Debug/bin/"
+    },
+    {
+      "name": "C++ makefile release launch",
+      "type": "cppvsdbg",
+      "request": "launch",
+      "program": "${workspaceFolder}/build/Debug/bin/galaxy-jar.exe",
+      "preLaunchTask": "makefile release build",
+      "cwd": "${workspaceFolder}/build/Release/bin/"
     }
   ]
 }

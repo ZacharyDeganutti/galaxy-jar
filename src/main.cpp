@@ -34,7 +34,7 @@ int main() {
     
     /// Setup for skybox background draw
     vk_layer::SkyboxUniforms skybox_uniforms = vk_layer::build_skybox_uniforms(context, context.buffer_count, context.cleanup_procedures);
-    vk_image::HostImageRgba skybox_image = vk_image::load_rgba_cubemap("../../../assets/skybox/daylight.png");
+    vk_image::HostImage skybox_image = vk_image::load_rgba_cubemap("../../../assets/skybox/daylight.png");
     vk_layer::SkyboxTexture skybox_texture = vk_layer::upload_skybox(context, skybox_image, context.cleanup_procedures);
     vk_layer::Drawable skybox_cube;
     {
@@ -66,7 +66,7 @@ int main() {
             .y = geometry::Direction::Up,
             .z = geometry::Direction::Forward
         };
-        geometry::HostModel dummy_model = geometry::load_obj_model("house.obj", "../../../assets/rungholt/", unmodified_basis);
+        geometry::HostModel dummy_model = geometry::load_obj_model("exterior.obj", "../../../assets/bistro/", unmodified_basis);
         dummy_drawable = vk_layer::make_drawable(context, dummy_model);
     }
 
@@ -75,7 +75,11 @@ int main() {
     std::vector<VkDescriptorSetLayout> graphics_descriptor_set_layouts = { 
         global_uniforms.view.get_layout(),
         global_uniforms.projection.get_layout(),
-        main_drawables[0].gpu_model.texture_layout, // TODO: All of the drawables have common layouts for resources, consider finding a cleaner way to model this
+        global_uniforms.sun_direction.get_layout(),
+        // TODO: All of the drawables currently have common layouts for resources, consider finding a cleaner way to model this
+        main_drawables[0].gpu_model.texture_layout,
+        main_drawables[0].gpu_model.texture_layout,
+        main_drawables[0].gpu_model.texture_layout,
         main_drawables[0].transform.get_layout(),
     };
 

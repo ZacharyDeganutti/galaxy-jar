@@ -50,15 +50,18 @@ namespace geometry {
         AxisAlignedBasis basis;
         IndexedVertexData vertex_attributes;
         std::vector<MaterialProperties> materials;
-        std::vector<std::optional<vk_image::HostImageRgba>> diffuse_textures;
+        std::vector<std::optional<vk_image::HostImage>> diffuse_textures;
+        std::vector<std::optional<vk_image::HostImage>> normal_textures;
+        std::vector<std::optional<vk_image::HostImage>> specular_textures;
     };
 
     struct GpuModel {
         std::vector<vk_types::GpuMeshBuffers> vertex_buffers;
         std::vector<vk_types::PersistentUniformBuffer<MaterialProperties>> material_buffers;
-        // std::vector<vk_types::AllocatedImage> diffuse_textures;
         VkDescriptorSetLayout texture_layout;
         std::vector<VkDescriptorSet> diffuse_texture_descriptors;
+        std::vector<VkDescriptorSet> normal_texture_descriptors;
+        std::vector<VkDescriptorSet> specular_texture_descriptors;
     };
 
     // Accepts a file name, and a path to search for the file and corresponding material as arguments

@@ -8,7 +8,6 @@
 #include "vk_types.hpp"
 
 namespace vk_image {
-    
     enum class Representation {
         Flat,
         Cubemap
@@ -25,12 +24,20 @@ namespace vk_image {
         HostImage image;
     };
 
-    HostImageRgba load_rgba_image(const std::string& filepath);
-    HostImageRgba load_rgba_cubemap(const std::string& filepath);
-    vk_types::AllocatedImage upload_rgba_image(vk_types::Context& context, const HostImageRgba& image, VkImageLayout desired_layout);
-    vk_types::AllocatedImage upload_rgba_image(const vk_types::Context& context, const HostImageRgba& image, VkImageLayout desired_layout, vk_types::CleanupProcedures& lifetime);
-    vk_types::AllocatedImage upload_rgba_image_mipmapped(vk_types::Context& context, const HostImageRgba& image, VkImageLayout desired_layout);
-    vk_types::AllocatedImage upload_rgba_image_mipmapped(const vk_types::Context& context, const HostImageRgba& image, VkImageLayout desired_layout, vk_types::CleanupProcedures& lifetime);
+    struct HostImageRg {
+        HostImage image;
+    };
+
+    HostImage load_rg_image(const std::string& filepath);
+    HostImage load_rgba_image(const std::string& filepath);
+    HostImage load_rgba_cubemap(const std::string& filepath);
+    // Takes a gltf standard encoded metallic workflow image and flattens it to a RG channel image 
+    HostImage load_gltf_specular_image_as_rg(const std::string& filename);
+    vk_types::AllocatedImage upload_image(vk_types::Context& context, const HostImage& image, VkFormat format, VkImageLayout desired_layout);
+    vk_types::AllocatedImage upload_image(const vk_types::Context& context, const HostImage& image, VkFormat format, VkImageLayout desired_layout, vk_types::CleanupProcedures& lifetime);
+    vk_types::AllocatedImage upload_image_mipmapped(vk_types::Context& context, const HostImage& image, VkFormat format, VkImageLayout desired_layout);
+    vk_types::AllocatedImage upload_image_mipmapped(const vk_types::Context& context, const HostImage& image, VkFormat format, VkImageLayout desired_layout, vk_types::CleanupProcedures& lifetime);
+
     VkSampler init_linear_sampler(vk_types::Context& context);
     VkSampler init_linear_sampler(const vk_types::Context& context, vk_types::CleanupProcedures& lifetime);
 

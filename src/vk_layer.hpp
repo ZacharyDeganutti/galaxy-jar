@@ -78,6 +78,7 @@ namespace vk_layer
     struct GlobalUniforms {
         BufferedUniform<glm::mat4> view;
         BufferedUniform<glm::mat4> projection;
+        BufferedUniform<glm::vec4> sun_direction;
     };
 
     struct SkyboxUniforms {
@@ -104,7 +105,7 @@ namespace vk_layer
         SkyboxUniforms skybox_dynamic_uniforms;
     };
 
-    SkyboxTexture upload_skybox(vk_types::Context& context, const vk_image::HostImageRgba& skybox_image, vk_types::CleanupProcedures& lifetime);
+    SkyboxTexture upload_skybox(vk_types::Context& context, const vk_image::HostImage& skybox_image, vk_types::CleanupProcedures& lifetime);
     Pipelines build_pipelines(vk_types::Context& context, const std::vector<VkDescriptorSetLayout>& graphics_descriptor_layouts, const std::vector<VkDescriptorSetLayout>& skybox_descriptor_layouts, vk_types::CleanupProcedures& lifetime);
     GlobalUniforms build_global_uniforms(vk_types::Context& context, const size_t buffer_count, vk_types::CleanupProcedures& lifetime);
     SkyboxUniforms build_skybox_uniforms(vk_types::Context& context, const size_t buffer_count, vk_types::CleanupProcedures& lifetime);

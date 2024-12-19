@@ -3,38 +3,93 @@
 #include "vk_layer.hpp"
 
 #include <array>
+#include <cmath>
 
 #define STB_IMAGE_IMPLEMENTATION
 #include "stb/stb_image.h"
 
 namespace vk_image {
 
-    HostImageRgba load_rgba_image(const std::string& filename) {
+    HostImage load_image(const std::string& filename, int channel_count) {
         
         int width = 0;
         int height = 0; 
         int channels = 0;
 
-        const int FORCE_CHANNELS = 4;
         stbi_set_flip_vertically_on_load(true);
-        unsigned char* image_data = stbi_load(filename.c_str(), &width, &height, &channels, FORCE_CHANNELS);
+        unsigned char* image_data = stbi_load(filename.c_str(), &width, &height, &channels, channel_count);
 
         if (!image_data) {
             printf("Unable to load image %s\n", filename.c_str());
             exit(EXIT_FAILURE);
         }
 
-        std::vector<unsigned char> image_data_vec(image_data, image_data + (width * height * FORCE_CHANNELS));
+        size_t data_size = static_cast<size_t>(width * height * channel_count);
+
+        std::vector<unsigned char> image_data_vec(image_data, image_data + (width * height * channel_count));
 
         stbi_image_free(image_data);
 
-        return HostImageRgba{
-            HostImage { static_cast<uint32_t>(width), static_cast<uint32_t>(height), image_data_vec, Representation::Flat }
-        };
+        return HostImage { static_cast<uint32_t>(width), static_cast<uint32_t>(height), image_data_vec, Representation::Flat };
+    }
+
+    HostImage load_rgba_image(const std::string& filename) {
+        const int FORCE_CHANNELS = 4;
+
+        return load_image(filename, FORCE_CHANNELS);
+    }
+    
+    enum class ColorComponents {
+        RG,
+        GB
+    };
+
+    HostImage load_rg_image_base(const std::string& filename, ColorComponents components_to_extract) {
+        int width = 0;
+        int height = 0; 
+        int channels = 0;
+
+        const int rgb_channel_count = 3;
+        const int rg_channel_count = 2;
+        stbi_set_flip_vertically_on_load(true);
+        unsigned char* image_data = stbi_load(filename.c_str(), &width, &height, &channels, rgb_channel_count);
+
+        if (!image_data) {
+            printf("Unable to load image %s\n", filename.c_str());
+            exit(EXIT_FAILURE);
+        }
+
+        size_t rgb_data_size = static_cast<size_t>(width * height * rgb_channel_count);
+        size_t rg_data_size = static_cast<size_t>(width * height * rg_channel_count);
+        std::vector<unsigned char> image_data_vec;
+        image_data_vec.reserve(rg_data_size);
+        size_t offset = 0;
+        if (components_to_extract == ColorComponents::RG) {
+            offset = 0;
+        }
+        else {
+            offset = 1;
+        }
+        for(size_t position = 0; position < rgb_data_size; position += 3) {
+            image_data_vec.emplace_back(static_cast<unsigned char>(image_data[position+offset]));
+            image_data_vec.emplace_back(static_cast<unsigned char>(image_data[position+offset+1]));
+        }
+
+        stbi_image_free(image_data);
+
+        return HostImage { static_cast<uint32_t>(width), static_cast<uint32_t>(height), image_data_vec, Representation::Flat };
+    }
+
+    HostImage load_gltf_specular_image_as_rg(const std::string& filename) {
+        return load_rg_image_base(filename, ColorComponents::GB);
+    }
+
+    HostImage load_rg_image(const std::string& filename) {
+        return load_rg_image_base(filename, ColorComponents::RG);
     }
 
     // Opinionated cubemap load. Expects the cubemap to be laid out in the shape of a cross rotated 90 degrees to the left
-    HostImageRgba load_rgba_cubemap(const std::string& filename) {
+    HostImage load_rgba_cubemap(const std::string& filename) {
         constexpr int face_count = 6;
         int width = 0;
         int height = 0; 
@@ -70,25 +125,23 @@ namespace vk_image {
 
         stbi_image_free(image_data);
 
-        return HostImageRgba{
-            HostImage { static_cast<uint32_t>(face_width), static_cast<uint32_t>(face_height), face_ordered_layout_image_data, Representation::Cubemap }
-        };
+        
+        return HostImage { static_cast<uint32_t>(face_width), static_cast<uint32_t>(face_height), face_ordered_layout_image_data, Representation::Cubemap };
     }
 
-    vk_types::AllocatedImage upload_rgba_image_base(const vk_types::Context& context, const HostImageRgba& image, VkImageLayout desired_layout, bool mipmaps_enabled, vk_types::CleanupProcedures& lifetime) {
-        const VkFormat image_format = VK_FORMAT_R8G8B8A8_SRGB;
+    vk_types::AllocatedImage upload_image_base(const vk_types::Context& context, const HostImage& image, VkFormat image_format, VkImageLayout desired_layout, bool mipmaps_enabled, vk_types::CleanupProcedures& lifetime) {
         const VkImageUsageFlags image_flags =  VK_IMAGE_USAGE_SAMPLED_BIT | VK_IMAGE_USAGE_TRANSFER_SRC_BIT | VK_IMAGE_USAGE_TRANSFER_DST_BIT;
-        const VkExtent2D extent = { image.image.width, image.image.height };
+        const VkExtent2D extent = { image.width, image.height };
 
         // if mipmaps are enabled, we need to calculate the number of mipmaps, otherwise we only have one mip level.
-        const uint32_t mip_levels = mipmaps_enabled ? static_cast<uint32_t>(std::floor(std::log2(std::max(image.image.width, image.image.height)))) + 1 : 1;
-        vk_types::AllocatedImage allocated_image = init_allocated_image(context.device, context.allocator, image.image.representation, image_format, image_flags, mip_levels, extent, lifetime);
+        const uint32_t mip_levels = mipmaps_enabled ? static_cast<uint32_t>(std::floor(std::log2(std::max(image.width, image.height)))) + 1 : 1;
+        vk_types::AllocatedImage allocated_image = init_allocated_image(context.device, context.allocator, image.representation, image_format, image_flags, mip_levels, extent, lifetime);
         
         // Create a temporary staging buffer which can be used to transfer from CPU memory to GPU memory
         vk_types::CleanupProcedures staging_buffer_lifetime = {};
         vk_types::AllocatedBuffer staging = vk_buffer::create_buffer(
             context.allocator,
-            image.image.data.size(),
+            image.data.size(),
             VK_BUFFER_USAGE_TRANSFER_SRC_BIT, 
             VMA_MEMORY_USAGE_CPU_ONLY,
             staging_buffer_lifetime);
@@ -100,17 +153,17 @@ namespace vk_image {
         }
 
         // Fill staging buffer
-        memcpy(reinterpret_cast<unsigned char*>(data), image.image.data.data(), image.image.data.size());
+        memcpy(reinterpret_cast<unsigned char*>(data), image.data.data(), image.data.size());
 
         vk_layer::immediate_submit(context, [&](VkCommandBuffer cmd) {
             transition_image(cmd, allocated_image.image, VK_IMAGE_LAYOUT_UNDEFINED, VK_IMAGE_LAYOUT_TRANSFER_DST_OPTIMAL);
 
             std::vector<VkBufferImageCopy> regions;
-            size_t face_count = image.image.representation == vk_image::Representation::Cubemap ? 6 : 1;
+            size_t face_count = image.representation == vk_image::Representation::Cubemap ? 6 : 1;
             regions.reserve(face_count);
 
             for (size_t face = 0; face < face_count; ++face) {
-                VkDeviceSize buffer_face_offset = face * (image.image.data.size() / 6);
+                VkDeviceSize buffer_face_offset = face * (image.data.size() / 6);
                 VkBufferImageCopy region{};
                 region.bufferOffset = 0;
                 region.bufferRowLength = 0;
@@ -167,24 +220,24 @@ namespace vk_image {
         return allocated_image;
     }
 
-    vk_types::AllocatedImage upload_rgba_image(const vk_types::Context& context, const HostImageRgba& image, VkImageLayout desired_layout, vk_types::CleanupProcedures& lifetime) {
+    vk_types::AllocatedImage upload_image(const vk_types::Context& context, const HostImage& image, VkFormat format, VkImageLayout desired_layout, vk_types::CleanupProcedures& lifetime) {
         const bool MIPMAPS_DISABLED = false;
-        return upload_rgba_image_base(context, image, desired_layout, MIPMAPS_DISABLED, lifetime);
+        return upload_image_base(context, image, format, desired_layout, MIPMAPS_DISABLED, lifetime);
     }
 
-    vk_types::AllocatedImage upload_rgba_image(vk_types::Context& context, const HostImageRgba& image, VkImageLayout desired_layout) {
+    vk_types::AllocatedImage upload_image(vk_types::Context& context, const HostImage& image, VkFormat format, VkImageLayout desired_layout) {
         const bool MIPMAPS_DISABLED = false;
-        return upload_rgba_image_base(context, image, desired_layout, MIPMAPS_DISABLED, context.cleanup_procedures);
+        return upload_image_base(context, image, format, desired_layout, MIPMAPS_DISABLED, context.cleanup_procedures);
     }
 
-    vk_types::AllocatedImage upload_rgba_image_mipmapped(const vk_types::Context& context, const HostImageRgba& image, VkImageLayout desired_layout, vk_types::CleanupProcedures& lifetime) {
+    vk_types::AllocatedImage upload_image_mipmapped(const vk_types::Context& context, const HostImage& image, VkFormat format, VkImageLayout desired_layout, vk_types::CleanupProcedures& lifetime) {
         const bool MIPMAPS_ENABLED = true;
-        return upload_rgba_image_base(context, image, desired_layout, MIPMAPS_ENABLED, lifetime);
+        return upload_image_base(context, image, format, desired_layout, MIPMAPS_ENABLED, lifetime);
     }
 
-    vk_types::AllocatedImage upload_rgba_image_mipmapped(vk_types::Context& context, const HostImageRgba& image, VkImageLayout desired_layout) {
+    vk_types::AllocatedImage upload_image_mipmapped(vk_types::Context& context, const HostImage& image, VkFormat format, VkImageLayout desired_layout) {
         const bool MIPMAPS_ENABLED = true;
-        return upload_rgba_image_base(context, image, desired_layout, MIPMAPS_ENABLED, context.cleanup_procedures);
+        return upload_image_base(context, image, format, desired_layout, MIPMAPS_ENABLED, context.cleanup_procedures);
     }
 
     VkImageSubresourceRange make_subresource_range(const VkImageAspectFlags aspect_mask) {

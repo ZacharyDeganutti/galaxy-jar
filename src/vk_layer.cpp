@@ -268,7 +268,10 @@ namespace vk_layer {
                 std::vector<VkDescriptorSet> graphics_descriptor_sets = { 
                     state.main_dynamic_uniforms.view.get_descriptor_set(state.frame_in_flight), 
                     state.main_dynamic_uniforms.projection.get_descriptor_set(state.frame_in_flight), 
+                    state.main_dynamic_uniforms.sun_direction.get_descriptor_set(state.frame_in_flight),
                     drawable.gpu_model.diffuse_texture_descriptors[piece],
+                    drawable.gpu_model.normal_texture_descriptors[piece],
+                    drawable.gpu_model.specular_texture_descriptors[piece],
                     drawable.transform.get_descriptor_set(state.frame_in_flight)
                 };
                 vkCmdBindDescriptorSets(cmd, pipeline.bind_point, pipeline.layout, 0, graphics_descriptor_sets.size(), graphics_descriptor_sets.data(), 0, nullptr);
@@ -335,7 +338,7 @@ namespace vk_layer {
         }
     }
 
-    SkyboxTexture upload_skybox(vk_types::Context& context, const vk_image::HostImageRgba& skybox_image, vk_types::CleanupProcedures& lifetime) {
+    SkyboxTexture upload_skybox(vk_types::Context& context, const vk_image::HostImage& skybox_image, vk_types::CleanupProcedures& lifetime) {
         const std::vector<VkDescriptorType> texture_descriptor_types = {VK_DESCRIPTOR_TYPE_COMBINED_IMAGE_SAMPLER};
         VkDescriptorSetLayout texture_layout = vk_descriptors::init_descriptor_layout(context.device, VK_SHADER_STAGE_ALL_GRAPHICS, texture_descriptor_types, context.cleanup_procedures);
 
@@ -343,7 +346,7 @@ namespace vk_layer {
         VkSampler texture_sampler = vk_image::init_linear_sampler(context);
 
         vk_types::AllocatedImage skybox_texture = {};
-        skybox_texture = vk_image::upload_rgba_image(context, skybox_image, VK_IMAGE_LAYOUT_SHADER_READ_ONLY_OPTIMAL, lifetime);
+        skybox_texture = vk_image::upload_image(context, skybox_image, VK_FORMAT_R8G8B8A8_SRGB, VK_IMAGE_LAYOUT_SHADER_READ_ONLY_OPTIMAL, lifetime);
         
         vk_descriptors::DescriptorAllocator descriptor_allocator = {};
         VkDescriptorSet skybox_texture_descriptor = vk_descriptors::init_combined_image_sampler_descriptors(context.device,
@@ -418,7 +421,7 @@ namespace vk_layer {
 
     GlobalUniforms build_global_uniforms(vk_types::Context& context, const size_t buffer_count, vk_types::CleanupProcedures& lifetime) {
 
-        glm::mat4 view = glm::translate(glm::mat4(1.0f), glm::vec3(0.0f, -10.0f, 100.0f));
+        glm::mat4 view = glm::rotate(glm::translate(glm::mat4(1.0f), glm::vec3(0.0f, -10.0f, -10.0f)), 3.14f, glm::vec3(0.0f, 1.0f, 0.0f));
         BufferedUniform<glm::mat4> view_ubo = BufferedUniform<glm::mat4>(context, view, buffer_count, lifetime);
         
         glm::mat4 projection = glm::transpose(glm::perspective(45.0f, 4.0f/3.0f, 1.0f, 1000.0f));
@@ -430,9 +433,12 @@ namespace vk_layer {
         projection = projection * vulkan_flip;
         BufferedUniform<glm::mat4> projection_ubo = BufferedUniform<glm::mat4>(context, projection, buffer_count, lifetime);
 
+        BufferedUniform<glm::vec4> sun_ubo = BufferedUniform<glm::vec4>(context, glm::vec4(0.5f, 1.0f, 0.0f, 0.0f), buffer_count, lifetime);
+
         GlobalUniforms global_buffers = GlobalUniforms {
             view_ubo,
             projection_ubo,
+            sun_ubo
         };
 
         return global_buffers;
@@ -577,8 +583,9 @@ namespace vk_layer {
         }
 
         /// Update state for next frame ///
-        glm::mat4 rotated_view = glm::rotate(state.main_dynamic_uniforms.view.get(), glm::radians(0.01f), glm::vec3(1.0f, 1.0f, 0.0f));
-        glm::vec4 current_brightness = glm::vec4(glm::vec3(glm::sin(glm::radians(((float)state.frame_num) / 200.0f))), 1.0f);
+        // glm::mat4 rotated_view = glm::rotate(state.main_dynamic_uniforms.view.get(), glm::radians(0.01f), glm::vec3(1.0f, 1.0f, 0.0f));
+        glm::mat4 rotated_view = state.main_dynamic_uniforms.view.get();
+        glm::vec4 rotated_sun = glm::rotate(state.main_dynamic_uniforms.sun_direction.get(), glm::radians(0.01f), glm::vec3(1.0f, 0.0f, 0.0f));
 
         // Face the same direction as the main rendering camera
         glm::mat4 cam_rotation = glm::mat4x4(rotated_view[0], rotated_view[1], rotated_view[2], glm::vec4(0.0f, 0.0f, 0.0f, 1.0f));
@@ -587,6 +594,8 @@ namespace vk_layer {
         GlobalUniforms updated_main_uniforms = state.main_dynamic_uniforms;
         updated_main_uniforms.view.set(rotated_view);
         updated_main_uniforms.view.push(next_frame_index);
+        updated_main_uniforms.sun_direction.set(rotated_sun);
+        updated_main_uniforms.sun_direction.push(next_frame_index);
 
         SkyboxUniforms updated_skybox_uniforms = state.skybox_dynamic_uniforms;
         updated_skybox_uniforms.cam_rotation.set(cam_rotation);
