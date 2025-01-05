@@ -421,8 +421,8 @@ namespace vk_layer {
 
     GlobalUniforms build_global_uniforms(vk_types::Context& context, const size_t buffer_count, vk_types::CleanupProcedures& lifetime) {
 
-        glm::mat4 view = glm::rotate(glm::translate(glm::mat4(1.0f), glm::vec3(0.0f, -5.2f, -15.0f)), 4.0f, glm::vec3(0.0f, 1.0f, 0.0f));
-        view = glm::translate(view, glm::vec3(1.0f, 0.0f, 8.0f));
+        glm::mat4 view = glm::rotate(glm::translate(glm::mat4(1.0f), glm::vec3(0.0f, -2.2f, 10.0f)), 0.0f, glm::vec3(0.0f, 1.0f, 0.0f));
+        view = glm::translate(view, glm::vec3(1.0f, 0.0f, 2.0f));
         BufferedUniform<glm::mat4> view_ubo = BufferedUniform<glm::mat4>(context, view, buffer_count, lifetime);
         
         glm::mat4 projection = glm::transpose(glm::perspective(45.0f, 4.0f/3.0f, 1.0f, 1000.0f));
@@ -434,7 +434,7 @@ namespace vk_layer {
         projection = projection * vulkan_flip;
         BufferedUniform<glm::mat4> projection_ubo = BufferedUniform<glm::mat4>(context, projection, buffer_count, lifetime);
 
-        BufferedUniform<glm::vec4> sun_ubo = BufferedUniform<glm::vec4>(context, glm::vec4(0.5f, 1.0f, 0.0f, 0.0f), buffer_count, lifetime);
+        BufferedUniform<glm::vec4> sun_ubo = BufferedUniform<glm::vec4>(context, glm::vec4(0.0f, 1.0f, 0.0f, 0.0f), buffer_count, lifetime);
 
         GlobalUniforms global_buffers = GlobalUniforms {
             view_ubo,
@@ -584,10 +584,10 @@ namespace vk_layer {
         }
 
         /// Update state for next frame ///
-        //glm::mat4 rotated_view = glm::rotate(state.main_dynamic_uniforms.view.get(), glm::radians(0.01f), glm::vec3(0.0f, 1.0f, 0.0f));
-        glm::mat4 rotated_view = state.main_dynamic_uniforms.view.get();
-        glm::vec4 rotated_sun = glm::rotate(state.main_dynamic_uniforms.sun_direction.get(), glm::radians(0.01f), glm::vec3(1.0f, 0.0f, 0.0f));
-        //glm::vec4 rotated_sun = state.main_dynamic_uniforms.sun_direction.get();
+        glm::mat4 rotated_view = glm::rotate(state.main_dynamic_uniforms.view.get(), glm::radians(0.01f), glm::vec3(0.0f, 1.0f, 0.0f));
+        //glm::mat4 rotated_view = state.main_dynamic_uniforms.view.get();
+        //glm::vec4 rotated_sun = glm::rotate(state.main_dynamic_uniforms.sun_direction.get(), glm::radians(0.01f), glm::vec3(1.0f, 0.0f, 0.0f));
+        glm::vec4 rotated_sun = state.main_dynamic_uniforms.sun_direction.get();
 
         // Face the same direction as the main rendering camera
         glm::mat4 cam_rotation = glm::mat4x4(rotated_view[0], rotated_view[1], rotated_view[2], glm::vec4(0.0f, 0.0f, 0.0f, 1.0f));

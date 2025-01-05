@@ -23,9 +23,8 @@ layout(set = 6, binding = 0) uniform ModelMatrix {
 
 void main() 
 {
-	//output the position of each vertex
 	gl_Position = projection.data * view.data * model.data * vec4(vertex, 1.0f);
-	normal_interp = normalize((view.data * model.data * vec4(normal, 0.0f)).xyz);
+	normal_interp = normalize(transpose(inverse(mat3(view.data) * mat3(model.data))) * normal);
 	tex_interp = tex_coord;
-	position_interp = gl_Position.xyz;
+	position_interp = (view.data * model.data * vec4(vertex, 1.0f)).xyz;
 }

@@ -202,12 +202,15 @@ namespace geometry {
         raw_normals.reserve(attrib.normals.size() / 3);
         for(int index = 0; index < (attrib.normals.size()/3); ++index) {
             glm::vec3 normal = glm::vec3(attrib.normals[3 * index], attrib.normals[(3 * index) + 1], attrib.normals[(3 * index) + 2]);
+            // Gotta reflect normals too.
+            normal = glm::reflect(normal, glm::vec3(1.0f, 0.0f, 0.0f));
             raw_normals.push_back(normal);
         }
 
         std::vector<glm::vec2> raw_texture_coordinates;
         raw_positions.reserve(attrib.texcoords.size() / 2);
         for(int index = 0; index < (attrib.texcoords.size()/2); ++index) {
+            // No need to reflect texture coordinates because we need these mirrored over x anyway
             glm::vec2 coordinate = glm::vec2(attrib.texcoords[2 * index], attrib.texcoords[(2 * index) + 1]);
             raw_texture_coordinates.push_back(coordinate);
         }
