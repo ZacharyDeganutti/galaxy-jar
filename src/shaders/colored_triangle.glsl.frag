@@ -21,6 +21,7 @@ layout(set = 2, binding = 0) uniform SunDirection {
 
 mat4 compute_tbn(in vec3 p, in vec3 n, in vec2 uv)
 {
+	vec3 norm = normalize(n);
     // get the necessary derivatives
     vec3 dpdx = dFdx( p );
     vec3 dpdy = dFdy( p );
@@ -28,22 +29,24 @@ mat4 compute_tbn(in vec3 p, in vec3 n, in vec2 uv)
     vec2 duvdy = dFdy( uv );
 
 	// Jacobian is [[dudx dudy] [dvdx dvdy]], get inv determinant
-	float inv_jacobian_det = 1.0f / (duvdx.x * duvdy.y - duvdy.x * duvdx.y);
+	float jacobian_det = duvdx.x * duvdy.y - duvdy.x * duvdx.y;
+	float inv_jacobian_det = 1.0f / jacobian_det;
 	float dxdu = duvdy.y * inv_jacobian_det;
 	float dydu = -1.0f * duvdy.x * inv_jacobian_det;
 
 	// Project point derivatives onto tangent plane
-	vec3 dpdx_s = dpdx - dot(dpdx, n) * n;
-  	vec3 dpdy_s = dpdy - dot(dpdy, n) * n;
+	vec3 dpdx_s = dpdx - dot(dpdx, norm) * norm;
+  	vec3 dpdy_s = dpdy - dot(dpdy, norm) * norm;
 
 	// Plug it in to get T
-	vec3 tangent = normalize(dxdu * dpdx_s + dydu * dpdy_s);
-	vec3 bitangent = cross(tangent, n);
+	vec3 tangent = normalize(sign(dxdu) * dxdu * dpdx_s + sign(dydu) * dydu * dpdy_s);
+	// vec3 tangent = normalize(dxdu * dpdx_s + dydu * dpdy_s);
+	vec3 bitangent = normalize(cross(tangent, norm));
 
 	mat4 result = mat4(1.0f);
 	result[0] = vec4(tangent, 0.0f);
 	result[1] = vec4(bitangent, 0.0f);
-	result[2] = vec4(n, 0.0f);
+	result[2] = vec4(norm, 0.0f);
 
 	return transpose(result);
 }
@@ -70,6 +73,20 @@ vec3 unpack_normal(vec2 packed_normal) {
 float f_fresnel_schlick_simplified_dielectric(vec3 surface_normal, vec3 incident_vector) {
 	float constant_term_squared = 0.04; // ((n1 - n2) / (n1 + n2))^2 where n1 and n2 are indices of refraction of air and a generic material (1.0 and 1.5)
 	return constant_term_squared + (1 - constant_term_squared) * pow((1 - max(dot(incident_vector, surface_normal), 0.0f)), 5);
+}
+
+float f_fresnel_lazanyi_simplified_metal(vec3 surface_normal, vec3 incident_vector) {
+	// Pretend all metals are gold-like because it plays nice with this formula and nobody will notice
+	//float refractive_index = 0.27f;
+	float refractive_index = 2.27f;
+	float extinction_coefficient = 2.78f;
+
+	float nm1 = refractive_index-1.0f;
+	float ksquared = extinction_coefficient*extinction_coefficient;
+	float numerator = nm1*nm1 + 4.0f * refractive_index * pow(1.0f - max(dot(surface_normal, incident_vector), 0.0f), 5.0f) + ksquared;
+	float denominator = pow(refractive_index + 1.0f, 2.0f) + ksquared;
+
+	return numerator/denominator;
 }
 
 // Returns 1.0f for positive values, 0.0f for negative
@@ -105,27 +122,47 @@ float compute_specular_reflectance(float roughness, float fresnel_value, vec3 no
 }
 
 // normal, light, and view are in tangent space
-vec4 total_reflectance(vec4 albedo, vec4 ambient_color, vec4 incident_color, float roughness, float metalness, vec3 normal, vec3 light, vec3 view_dir) {
+vec4 total_reflectance(vec4 albedo, float energy, vec4 incident_color, float roughness, float metalness, vec3 normal, vec3 light, vec3 view_dir) {
 	vec4 diffuse_color = lambertian_term(albedo);
+	vec3 halfway = normalize(view_dir + light);
 	float dielectric_fresnel_value = f_fresnel_schlick_simplified_dielectric(normal, view_dir);
-	float conductive_fresnel_value = f_fresnel_schlick_simplified_dielectric(normal, view_dir); // TODO: Figure out sensible values for this function
-	vec4 dielectric_reflective_color = incident_color * compute_specular_reflectance(roughness, dielectric_fresnel_value, normal, light, view_dir);
-	vec4 conductive_reflective_color = incident_color * compute_specular_reflectance(roughness, conductive_fresnel_value, normal, light, view_dir);
+	float conductive_fresnel_value = f_fresnel_lazanyi_simplified_metal(view_dir, halfway);
+	vec4 dielectric_reflective_color = energy * incident_color * compute_specular_reflectance(roughness, dielectric_fresnel_value, normal, light, view_dir);
+	vec4 conductive_reflective_color = energy * incident_color * compute_specular_reflectance(roughness, conductive_fresnel_value, normal, light, view_dir);
 	float angle_factor = angle_term(light, normal);
 	
-	vec4 dielectric_portion = mix(diffuse_color, dielectric_reflective_color, 1-dielectric_fresnel_value);
-	//vec4 dielectric_portion = diffuse_color;
+	vec4 dielectric_portion = mix(diffuse_color, dielectric_reflective_color, dielectric_fresnel_value);
 	vec4 conductive_portion = conductive_reflective_color;
-	// return mix(conductive_portion, dielectric_portion, metalness) * angle_factor;
-	// Cheat with omnidirectional ambient light until IBL is possible
-	return ambient_color * diffuse_color + dielectric_portion * angle_factor;
-	// return (diffuseness * diffuse_color + metalness * reflective_color) * angle_factor; 
+	vec4 combined_reflective_color = mix(dielectric_portion, conductive_portion, metalness);
+	return (energy * diffuse_color + combined_reflective_color) * angle_factor;
+}
+
+vec4 aces_tonemap(vec4 x) {
+	float a = 2.51f;
+	float b = 0.03f;
+	float c = 2.43f;
+	float d = 0.59f;
+	float e = 0.14f;
+	return clamp((x*(a*x+b))/(x*(c*x+d)+e), vec4(0.0f), vec4(1.0f));
+}
+
+float compute_ev100 ( float aperture , float shutter_duration)
+{
+	return log2( (aperture * aperture) / shutter_duration) ;
+}
+
+float ev100_to_exposure(float ev100) {
+	// Normalize against max luminance
+	return 1.0f / (1.2f * pow(2.0f, ev100));
 }
 
 void main() 
 {
 	vec4 albedo = texture(diffuse_tex, tex_interp);
-	vec4 ambient = vec4(0.2f, 0.2f, 0.2f, 0.0f);
+	float ambient_energy = 20000.0f;
+	ambient_energy = 0.1f;
+	float solar_energy = 110000.0f;
+	solar_energy = 140000.0f;
 	vec4 sun_direction_transformed = vec4(normalize((view.data * sun_direction.data).xyz), 0.0);
 	frag_color = texture(normal_tex, tex_interp);
 	
@@ -141,15 +178,24 @@ void main()
 		discard;
 	}
 
-	// frag_color = albedo * (ambient + lambertian_diffuse(tangent_space_light, tangent_space_normal));
 	// Update this to sample from cubemap, sky blue for now
-	vec4 incident_color = vec4(0.53f, 0.81f, 0.92f, 1.0f);
+	vec4 ambient_color = vec4(0.53f, 0.81f, 0.92f, 1.0f);
+	vec4 solar_color = vec4(0.992f, 0.984f, 0.828f, 1.0f);
 	vec4 specular_map_sample = texture(specular_tex, tex_interp);
 	float roughness = specular_map_sample.r;
 	float metalness = specular_map_sample.g;
 	vec3 tangent_space_view = normalize((tbn_basis * vec4(normalize(-position_interp), 0.0f)).xyz);
-	frag_color = total_reflectance(albedo, ambient, incident_color, roughness, metalness, tangent_space_normal, tangent_space_light.xyz, tangent_space_view);
-	//frag_color = total_reflectance(albedo, ambient, incident_color, roughness, metalness, normalize(normal_interp.xyz), sun_direction_transformed.xyz, normalize(-position_interp.xyz));
-	frag_color = frag_color / (vec4(vec3(1.0f), 0.0f) + frag_color);
 
+	// Cheating ambient light
+	vec4 ambient_light = ambient_color * ambient_energy * albedo;
+	vec3 view_space_normal = normalize((inverse(tbn_basis) * vec4(tangent_space_normal, 0.0f)).xyz);
+	vec4 solar_light = total_reflectance(albedo, solar_energy, solar_color, roughness, metalness, view_space_normal, sun_direction_transformed.xyz, normalize(-position_interp));
+
+	// sunny 16 rule
+	float ev100 = compute_ev100(16.0f, 1.0f/125.0f);
+	float exposure = ev100_to_exposure(ev100);
+
+	frag_color = (solar_light + ambient_light) * exposure;
+
+	frag_color = aces_tonemap(frag_color);
 }

@@ -13,7 +13,8 @@ int main() {
     glfwInit();
 
     glfwWindowHint(GLFW_CLIENT_API, GLFW_NO_API);
-    GLFWwindow* window = glfwCreateWindow(1600, 1200, "Galaxy Jar", nullptr, nullptr);
+    //GLFWwindow* window = glfwCreateWindow(1600, 1200, "Galaxy Jar", nullptr, nullptr);
+    GLFWwindow* window = glfwCreateWindow(3000, 2000, "Galaxy Jar", nullptr, nullptr);
 
     // Query glfw extensions
     uint32_t extensionCount = 0;
@@ -34,7 +35,7 @@ int main() {
     
     /// Setup for skybox background draw
     vk_layer::SkyboxUniforms skybox_uniforms = vk_layer::build_skybox_uniforms(context, context.buffer_count, context.cleanup_procedures);
-    vk_image::HostImage skybox_image = vk_image::load_rgba_cubemap("../../../assets/skybox/daylight.png");
+    vk_image::HostImage skybox_image = vk_image::load_rgba_cubemap("../../../assets/skybox/space-skybox.png");
     vk_layer::SkyboxTexture skybox_texture = vk_layer::upload_skybox(context, skybox_image, context.cleanup_procedures);
     vk_layer::Drawable skybox_cube;
     {
@@ -66,7 +67,8 @@ int main() {
             .y = geometry::Direction::Up,
             .z = geometry::Direction::Forward
         };
-        geometry::HostModel dummy_model = geometry::load_obj_model("exterior.obj", "../../../assets/bistro/", unmodified_basis);
+        //geometry::HostModel dummy_model = geometry::load_obj_model("exterior.obj", "../../../assets/bistro/", unmodified_basis);
+        geometry::HostModel dummy_model = geometry::load_obj_model("WATER_WORLD.obj", "../../../assets/planetoid/", unmodified_basis);
         dummy_drawable = vk_layer::make_drawable(context, dummy_model);
     }
 
