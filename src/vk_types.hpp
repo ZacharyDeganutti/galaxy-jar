@@ -10,7 +10,34 @@
 #include <functional>
 #include <cstring>
 
-namespace vk_types{
+// definitions can be found in vk_descriptors.cpp but the full declaration is needed here to realize this inside the Context type
+namespace vk_descriptors {
+    
+    struct DescriptorSetBundle {
+        VkDescriptorSet set;
+        VkDescriptorSetLayout layout;
+    };
+
+    struct MegaDescriptorSet {
+        private:
+        uint32_t next_combined_image_sampler_index;
+        uint32_t next_sampled_image_index;
+        uint32_t next_sampler_index;
+        uint32_t next_storage_image_index;
+        uint32_t next_storage_buffer_index;
+        public:
+        DescriptorSetBundle bundle;
+
+        // These register new descriptors into the descriptor set buffers. Modify the corresponding next_index field of the MegaDescriptorSet and returns the most recently assigned index for the requested type
+        uint32_t register_combined_image_sampler_descriptor(const VkDevice device, const VkImageView image_view, const VkSampler sampler);
+        uint32_t register_sampled_image_descriptor(const VkDevice device, const VkImageView image_view);
+        uint32_t register_sampler_descriptor(const VkDevice device, const VkSampler sampler);
+        uint32_t register_storage_image_descriptor(const VkDevice device, const VkImageView image_view);
+        uint32_t register_storage_buffer_descriptor(const VkDevice device, const VkBuffer buffer);
+    };
+}
+
+namespace vk_types {
     struct AllocatedImage {
         VkImage image;
         VkImageView image_view;
@@ -102,7 +129,6 @@ namespace vk_types{
         VkPipeline handle;
         VkPipelineLayout layout;
         VkPipelineBindPoint bind_point;
-        std::vector<VkDescriptorSet> core_descriptors; // TODO: deprecate this, no inherent descriptors for a pipeline
     };
 
     struct Synchronization {
@@ -126,6 +152,9 @@ namespace vk_types{
         VmaAllocator allocator;
         AllocatedImage draw_target;
         AllocatedImage depth_buffer;
+        AllocatedImage jar_cutaway_mask;
+        AllocatedImage jar_cutaway_mask_depth;
+        vk_descriptors::MegaDescriptorSet mega_descriptor_set;
         uint8_t buffer_count;
     };
 

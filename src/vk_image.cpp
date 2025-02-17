@@ -1,6 +1,7 @@
 #include "vk_buffer.hpp"
 #include "vk_image.hpp"
 #include "vk_layer.hpp"
+#include "sync.hpp"
 
 #include <array>
 #include <cmath>
@@ -156,7 +157,7 @@ namespace vk_image {
         memcpy(reinterpret_cast<unsigned char*>(data), image.data.data(), image.data.size());
 
         vk_layer::immediate_submit(context, [&](VkCommandBuffer cmd) {
-            transition_image(cmd, allocated_image.image, VK_IMAGE_LAYOUT_UNDEFINED, VK_IMAGE_LAYOUT_TRANSFER_DST_OPTIMAL);
+            sync::transition_image(cmd, allocated_image.image, VK_IMAGE_LAYOUT_UNDEFINED, VK_IMAGE_LAYOUT_TRANSFER_DST_OPTIMAL);
 
             std::vector<VkBufferImageCopy> regions;
             size_t face_count = image.representation == vk_image::Representation::Cubemap ? 6 : 1;
@@ -186,7 +187,7 @@ namespace vk_image {
 
             vkCmdCopyBufferToImage(cmd, staging.buffer, allocated_image.image, VK_IMAGE_LAYOUT_TRANSFER_DST_OPTIMAL, regions.size(), regions.data());
             // Transition image to requested layout after upload is complete
-            transition_image(cmd, allocated_image.image, VK_IMAGE_LAYOUT_TRANSFER_DST_OPTIMAL, desired_layout);
+            sync::transition_image(cmd, allocated_image.image, VK_IMAGE_LAYOUT_TRANSFER_DST_OPTIMAL, desired_layout);
         });
         vmaUnmapMemory(context.allocator, staging.allocation);
         staging_buffer_lifetime.cleanup();
@@ -196,11 +197,11 @@ namespace vk_image {
             vk_layer::immediate_submit(context, [&](VkCommandBuffer cmd) {
                 // Make the base image a source for the blit
                 VkImageSubresourceRange base_range = make_baselevel_subresource_range(VK_IMAGE_ASPECT_COLOR_BIT);
-                transition_image(cmd, allocated_image.image, base_range, desired_layout, VK_IMAGE_LAYOUT_TRANSFER_SRC_OPTIMAL);
+                sync::transition_image(cmd, allocated_image.image, base_range, desired_layout, VK_IMAGE_LAYOUT_TRANSFER_SRC_OPTIMAL);
 
                 // Set up the mip levels as destinations for the blit
                 VkImageSubresourceRange mip_range = make_miplevels_subresource_range(VK_IMAGE_ASPECT_COLOR_BIT);
-                transition_image(cmd, allocated_image.image, mip_range, desired_layout, VK_IMAGE_LAYOUT_TRANSFER_DST_OPTIMAL);
+                sync::transition_image(cmd, allocated_image.image, mip_range, desired_layout, VK_IMAGE_LAYOUT_TRANSFER_DST_OPTIMAL);
 
                 const uint32_t BASE_MIP_LEVEL = 0;
                 for (uint32_t level = 1; level < mip_levels; ++level) {
@@ -212,8 +213,8 @@ namespace vk_image {
                 }
 
                 // Return all the image levels back to the desired layout.
-                transition_image(cmd, allocated_image.image, base_range, VK_IMAGE_LAYOUT_TRANSFER_SRC_OPTIMAL, desired_layout);
-                transition_image(cmd, allocated_image.image, mip_range, VK_IMAGE_LAYOUT_TRANSFER_DST_OPTIMAL, desired_layout);
+                sync::transition_image(cmd, allocated_image.image, base_range, VK_IMAGE_LAYOUT_TRANSFER_SRC_OPTIMAL, desired_layout);
+                sync::transition_image(cmd, allocated_image.image, mip_range, VK_IMAGE_LAYOUT_TRANSFER_DST_OPTIMAL, desired_layout);
             });
         }
 
@@ -271,41 +272,6 @@ namespace vk_image {
         subresource_range.layerCount = VK_REMAINING_ARRAY_LAYERS;
 
         return subresource_range;
-    }
-
-    void transition_image(const VkCommandBuffer cmd, const VkImage image, const VkImageSubresourceRange range, const VkImageLayout starting_layout, const VkImageLayout ending_layout) {
-        VkImageSubresourceRange subresource_range = range;
-
-        // Use an image memory barrier on the subresource
-        VkImageMemoryBarrier2 image_barrier = {};
-        image_barrier.sType = VK_STRUCTURE_TYPE_IMAGE_MEMORY_BARRIER_2;
-        image_barrier.pNext = nullptr;
-        
-        image_barrier.srcStageMask = VK_PIPELINE_STAGE_2_ALL_COMMANDS_BIT;
-        image_barrier.srcAccessMask = VK_ACCESS_2_MEMORY_WRITE_BIT;
-        image_barrier.dstStageMask = VK_PIPELINE_STAGE_2_ALL_COMMANDS_BIT;
-        image_barrier.dstAccessMask = VK_ACCESS_2_MEMORY_WRITE_BIT | VK_ACCESS_2_MEMORY_READ_BIT;
-
-        image_barrier.oldLayout = starting_layout;
-        image_barrier.newLayout = ending_layout;
-
-        image_barrier.subresourceRange = subresource_range;
-        image_barrier.image = image;
-
-        // Then specify the dependency info with the image barrier wired in
-        VkDependencyInfo dependency_info = {};
-        dependency_info.sType = VK_STRUCTURE_TYPE_DEPENDENCY_INFO;
-        dependency_info.pNext = nullptr;
-        dependency_info.imageMemoryBarrierCount = 1;
-        dependency_info.pImageMemoryBarriers = &image_barrier;
-
-        // And set the pipeline barrier in place
-        vkCmdPipelineBarrier2(cmd, &dependency_info);
-    }
-
-    void transition_image(const VkCommandBuffer cmd, const VkImage image, const VkImageLayout starting_layout, const VkImageLayout ending_layout) {
-        VkImageSubresourceRange subresource_range = make_subresource_range(VK_IMAGE_ASPECT_COLOR_BIT);
-        transition_image(cmd, image, subresource_range, starting_layout, ending_layout);
     }
 
     void blit_image_to_image(const VkCommandBuffer cmd, const VkImage source, const VkImage destination, const VkExtent2D source_extent, const VkExtent2D destination_extent, const uint32_t source_miplevel, const uint32_t destination_miplevel) {

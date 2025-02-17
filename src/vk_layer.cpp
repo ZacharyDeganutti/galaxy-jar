@@ -5,6 +5,7 @@
 #include "vk_layer.hpp"
 #include "vk_pipeline.hpp"
 #include "vk_types.hpp"
+#include "sync.hpp"
 
 #include <GLFW/glfw3.h>
 #include <array>
@@ -117,13 +118,28 @@ namespace vk_layer {
             vkCmdClearAttachments(cmd, clear_properties.size(), clear_properties.data(), clear_rects.size(), clear_rects.data());
         }
 
-        void draw_background(const VkCommandBuffer cmd, const vk_types::AllocatedImage& background_target, const vk_types::Pipeline& pipeline, const DrawState& state) {
+        void draw_compute(  const VkCommandBuffer cmd,
+                            const std::function<std::vector<VkDescriptorSet>()>& get_descriptor_sets, 
+                            const std::function<void()>& set_push_constants,
+                            const vk_types::Pipeline& pipeline,
+                            const uint32_t dispatch_x,
+                            const uint32_t dispatch_y,
+                            const DrawState& state)
+        {
             vkCmdBindPipeline(cmd, pipeline.bind_point, pipeline.handle);
-            vkCmdBindDescriptorSets(cmd, pipeline.bind_point, pipeline.layout, 0, pipeline.core_descriptors.size(), pipeline.core_descriptors.data(), 0, nullptr);
-            vkCmdDispatch(cmd, std::ceil(background_target.image_extent.width / 16.0), std::ceil(background_target.image_extent.height / 16.0), 1);
+            std::vector<VkDescriptorSet> descriptor_sets = get_descriptor_sets();
+            set_push_constants();
+            vkCmdBindDescriptorSets(cmd, pipeline.bind_point, pipeline.layout, 0, descriptor_sets.size(), descriptor_sets.data(), 0, nullptr);
+            vkCmdDispatch(cmd, dispatch_x, dispatch_y, 1);
         }
 
-        void draw_background_skybox(const VkCommandBuffer cmd, const vk_types::AllocatedImage& background_target, const vk_types::Pipeline& pipeline, const Drawable& cube_model, const SkyboxTexture& texture, const DrawState& state) {
+        void draw_background_skybox(const VkCommandBuffer cmd,
+                                    const std::function<std::vector<VkDescriptorSet>(size_t)>& get_descriptor_sets, 
+                                    const std::function<void(size_t)>& set_push_constants,
+                                    const vk_types::AllocatedImage& background_target,
+                                    const vk_types::Pipeline& pipeline,
+                                    const Drawable& cube_model,
+                                    const DrawState& state) {
             // Set up draw target attachment
             VkRenderingAttachmentInfo color_attachment = {}; 
             color_attachment.sType = VK_STRUCTURE_TYPE_RENDERING_ATTACHMENT_INFO;
@@ -172,11 +188,11 @@ namespace vk_layer {
             // Draw all buffers
             for (int piece = 0; piece < cube_model.gpu_model.vertex_buffers.size(); ++piece) {
                 // Bind up the descriptors to match each piece
-                std::vector<VkDescriptorSet> skybox_descriptor_sets = {
-                    state.skybox_dynamic_uniforms.cam_rotation.get_descriptor_set(state.frame_in_flight),
-                    texture.descriptor,
-                };
+                std::vector<VkDescriptorSet> skybox_descriptor_sets = get_descriptor_sets(piece);
                 vkCmdBindDescriptorSets(cmd, pipeline.bind_point, pipeline.layout, 0, skybox_descriptor_sets.size(), skybox_descriptor_sets.data(), 0, nullptr);
+
+                // Push the push constants
+                set_push_constants(piece);
 
                 // Bind the vertex buffers and fire off an indexed draw
                 const vk_types::GpuMeshBuffers& buffer_group = cube_model.gpu_model.vertex_buffers[piece];
@@ -194,7 +210,14 @@ namespace vk_layer {
             vkCmdEndRendering(cmd);
         }
 
-        void draw_geometry(const VkCommandBuffer cmd, const vk_types::AllocatedImage& draw_target, const vk_types::AllocatedImage& depth_buffer, const vk_types::Pipeline& pipeline, const Drawable& drawable, const DrawState& state) {
+        void draw_geometry( const VkCommandBuffer cmd, 
+                            const std::function<std::vector<VkDescriptorSet>(size_t)>& get_descriptor_sets, 
+                            const std::function<void(size_t)>& set_push_constants,
+                            bool clear_color, const vk_types::AllocatedImage& draw_target, 
+                            const vk_types::AllocatedImage& depth_buffer, 
+                            const vk_types::Pipeline& pipeline, 
+                            const Drawable& drawable, 
+                            const DrawState& state ) {
             //begin a render pass  connected to our draw image
 
             // Set up draw target attachment
@@ -255,26 +278,27 @@ namespace vk_layer {
 
             vkCmdSetScissor(cmd, 0, 1, &scissor);
 
-            // Clear out depth buffer
-            // std::array<VkRenderingAttachmentInfo, 2> attachments = {color_attachment, depth_attachment};
-            // std::array<VkExtent2D, 2> extents = {draw_target.image_extent, depth_buffer.image_extent};
-            std::array<VkRenderingAttachmentInfo, 1> attachments = {depth_attachment};
-            std::array<VkExtent2D, 1> extents = {depth_buffer.image_extent};
-            clear_attachments(cmd, attachments, extents);
+            // Clear out necessary color/depth buffers
+            if (clear_color) {
+                std::array<VkRenderingAttachmentInfo, 2> attachments = {color_attachment, depth_attachment};
+                std::array<VkExtent2D, 2> extents = {draw_target.image_extent, depth_buffer.image_extent};
+                clear_attachments(cmd, attachments, extents);
+            }
+            else {
+                std::array<VkRenderingAttachmentInfo, 1> attachments = {depth_attachment};
+                std::array<VkExtent2D, 1> extents = {depth_buffer.image_extent};
+                clear_attachments(cmd, attachments, extents);
+            }
+            
             
             // Draw all buffers
             for (int piece = 0; piece < drawable.gpu_model.vertex_buffers.size(); ++piece) {
                 // Bind up the descriptors to match each piece
-                std::vector<VkDescriptorSet> graphics_descriptor_sets = { 
-                    state.main_dynamic_uniforms.view.get_descriptor_set(state.frame_in_flight), 
-                    state.main_dynamic_uniforms.projection.get_descriptor_set(state.frame_in_flight), 
-                    state.main_dynamic_uniforms.sun_direction.get_descriptor_set(state.frame_in_flight),
-                    drawable.gpu_model.diffuse_texture_descriptors[piece],
-                    drawable.gpu_model.normal_texture_descriptors[piece],
-                    drawable.gpu_model.specular_texture_descriptors[piece],
-                    drawable.transform.get_descriptor_set(state.frame_in_flight)
-                };
-                vkCmdBindDescriptorSets(cmd, pipeline.bind_point, pipeline.layout, 0, graphics_descriptor_sets.size(), graphics_descriptor_sets.data(), 0, nullptr);
+                std::vector<VkDescriptorSet> descriptor_sets = get_descriptor_sets(piece);
+                vkCmdBindDescriptorSets(cmd, pipeline.bind_point, pipeline.layout, 0, descriptor_sets.size(), descriptor_sets.data(), 0, nullptr);
+
+                // Push the push constants
+                set_push_constants(piece);
 
                 // Bind the vertex buffers and fire off an indexed draw
                 const vk_types::GpuMeshBuffers& buffer_group = drawable.gpu_model.vertex_buffers[piece];
@@ -338,92 +362,150 @@ namespace vk_layer {
         }
     }
 
-    SkyboxTexture upload_skybox(vk_types::Context& context, const vk_image::HostImage& skybox_image, vk_types::CleanupProcedures& lifetime) {
-        const std::vector<VkDescriptorType> texture_descriptor_types = {VK_DESCRIPTOR_TYPE_COMBINED_IMAGE_SAMPLER};
-        VkDescriptorSetLayout texture_layout = vk_descriptors::init_descriptor_layout(context.device, VK_SHADER_STAGE_ALL_GRAPHICS, texture_descriptor_types, context.cleanup_procedures);
-
-        // Upload textures for all materials
+    uint32_t upload_skybox(vk_types::Context& context, const vk_image::HostImage& skybox_image, vk_types::CleanupProcedures& lifetime) {
         VkSampler texture_sampler = vk_image::init_linear_sampler(context);
-
         vk_types::AllocatedImage skybox_texture = {};
         skybox_texture = vk_image::upload_image(context, skybox_image, VK_FORMAT_R8G8B8A8_SRGB, VK_IMAGE_LAYOUT_SHADER_READ_ONLY_OPTIMAL, lifetime);
-        
-        vk_descriptors::DescriptorAllocator descriptor_allocator = {};
-        VkDescriptorSet skybox_texture_descriptor = vk_descriptors::init_combined_image_sampler_descriptors(context.device,
-            skybox_texture.image_view,
-            texture_sampler,
-            texture_layout,
-            descriptor_allocator,
-            lifetime);
-        
-        return SkyboxTexture { skybox_texture, skybox_texture_descriptor, texture_layout }; 
+
+        return context.mega_descriptor_set.register_combined_image_sampler_descriptor(context.device, skybox_texture.image_view, texture_sampler); 
     }
     
-    Pipelines build_pipelines(vk_types::Context& context, const std::vector<VkDescriptorSetLayout>& graphics_descriptor_layouts, const std::vector<VkDescriptorSetLayout>& skybox_descriptor_layouts, vk_types::CleanupProcedures& lifetime) {
+    Pipelines build_pipelines(vk_types::Context& context, const DescriptorSetLayouts& descriptor_layouts, vk_types::CleanupProcedures& lifetime) {
         /// Setup descriptors for compute pipeline
         vk_descriptors::DescriptorAllocator descriptor_allocator = {};
         std::vector<VkDescriptorType> compute_descriptor_types = { VK_DESCRIPTOR_TYPE_STORAGE_IMAGE };
         VkDescriptorSetLayout compute_descriptor_layout = vk_descriptors::init_descriptor_layout(context.device, VK_SHADER_STAGE_COMPUTE_BIT, compute_descriptor_types, lifetime);
         VkDescriptorSet compute_descriptor_set = vk_descriptors::init_image_descriptors(context.device, context.draw_target.image_view, compute_descriptor_layout, descriptor_allocator, lifetime);
 
-        /// Assemble the compute pipeline
-        VkShaderModule compute_shader = vk_pipeline::init_shader_module(context.device, "../../../src/shaders/gradient.glsl.comp.spv", lifetime);
-        std::vector<VkDescriptorSetLayout> compute_descriptor_set_layouts = { compute_descriptor_layout };
-        VkPipelineLayout compute_pipeline_layout = vk_pipeline::init_pipeline_layout(context.device, compute_descriptor_set_layouts, lifetime);
-        vk_types::Pipeline compute_pipeline = vk_pipeline::init_compute_pipeline(context.device, compute_pipeline_layout, compute_shader, { compute_descriptor_set }, lifetime);
+        /// Assemble the 'default' gradient drawing compute pipeline
+        vk_types::Pipeline grid_pipeline = {};
+        {
+            VkShaderModule gradient_shader = vk_pipeline::init_shader_module(context.device, "../../../src/shaders/gradient.glsl.comp.spv", lifetime);
+            VkPushConstantRange grid_pc_range = push_constant_range<GridPassPushConstants>(VK_SHADER_STAGE_COMPUTE_BIT);
+            VkPipelineLayout gradient_pipeline_layout = vk_pipeline::init_pipeline_layout(context.device, descriptor_layouts.grid, grid_pc_range, lifetime);
+            grid_pipeline = vk_pipeline::init_compute_pipeline(context.device, gradient_pipeline_layout, gradient_shader, lifetime);
+        }
+
+        /// Assemble the pipeline to compose all of the images into the final image
+        vk_types::Pipeline compose_pipeline = {};
+        {
+            VkShaderModule compose_shader = vk_pipeline::init_shader_module(context.device, "../../../src/shaders/compose.glsl.comp.spv", lifetime);
+            VkPushConstantRange compose_pc_range = push_constant_range<ComposePassPushConstants>(VK_SHADER_STAGE_COMPUTE_BIT);
+            VkPipelineLayout compose_pipeline_layout = vk_pipeline::init_pipeline_layout(context.device, descriptor_layouts.compose, compose_pc_range, lifetime);
+            compose_pipeline = vk_pipeline::init_compute_pipeline(context.device, compose_pipeline_layout, compose_shader, lifetime);
+        }
 
         /// Assemble the graphics pipeline
-        VkShaderModule vert_shader = vk_pipeline::init_shader_module(context.device, "../../../src/shaders/colored_triangle.glsl.vert.spv", lifetime);
-        VkShaderModule frag_shader = vk_pipeline::init_shader_module(context.device, "../../../src/shaders/colored_triangle.glsl.frag.spv", lifetime);
-        VkPipelineLayout graphics_pipeline_layout = vk_pipeline::init_pipeline_layout(context.device, graphics_descriptor_layouts, lifetime);
-        vk_pipeline::GraphicsPipelineBuilder standard_render_pipeline_builder = vk_pipeline::GraphicsPipelineBuilder(context.device, graphics_pipeline_layout, vert_shader, frag_shader, context.draw_target.image_format, context.depth_buffer.image_format, lifetime);
-        vk_types::Pipeline graphics_pipeline = standard_render_pipeline_builder.build();
+        vk_types::Pipeline space_pipeline = {};
+        {
+            VkShaderModule vert_shader = vk_pipeline::init_shader_module(context.device, "../../../src/shaders/colored_triangle.glsl.vert.spv", lifetime);
+            VkShaderModule frag_shader = vk_pipeline::init_shader_module(context.device, "../../../src/shaders/colored_triangle.glsl.frag.spv", lifetime);
+            VkPushConstantRange graphics_pc_range = push_constant_range<SpacePassPushConstants>(VK_SHADER_STAGE_FRAGMENT_BIT);
+            VkPipelineLayout graphics_pipeline_layout = vk_pipeline::init_pipeline_layout(context.device, descriptor_layouts.graphics, graphics_pc_range, lifetime);
+            vk_pipeline::GraphicsPipelineBuilder standard_render_pipeline_builder = vk_pipeline::GraphicsPipelineBuilder(context.device, graphics_pipeline_layout, vert_shader, frag_shader, context.draw_target.image_format, context.depth_buffer.image_format, lifetime);
+            space_pipeline = standard_render_pipeline_builder.build();
+        }
 
         /// Assemble the skybox pipeline
-        VkShaderModule skybox_vert_shader = vk_pipeline::init_shader_module(context.device, "../../../src/shaders/skybox.glsl.vert.spv", lifetime);
-        VkShaderModule skybox_frag_shader = vk_pipeline::init_shader_module(context.device, "../../../src/shaders/skybox.glsl.frag.spv", lifetime);
-        VkPipelineLayout skybox_pipeline_layout = vk_pipeline::init_pipeline_layout(context.device, skybox_descriptor_layouts, lifetime);
-        vk_pipeline::GraphicsPipelineBuilder skybox_render_pipeline_builder = vk_pipeline::GraphicsPipelineBuilder(context.device, skybox_pipeline_layout, skybox_vert_shader, skybox_frag_shader, context.draw_target.image_format, VK_FORMAT_UNDEFINED, lifetime);
-        // Set up rasterization the same, but so that the inside of the geometry is drawn
-        VkPipelineRasterizationStateCreateInfo rasterization_info = {};
-        rasterization_info.sType = VK_STRUCTURE_TYPE_PIPELINE_RASTERIZATION_STATE_CREATE_INFO;
-        rasterization_info.pNext = nullptr;
-        rasterization_info.polygonMode = VK_POLYGON_MODE_FILL;
-        rasterization_info.lineWidth = 1.0f;
-        rasterization_info.cullMode = VK_CULL_MODE_FRONT_BIT;
-        rasterization_info.frontFace = VK_FRONT_FACE_COUNTER_CLOCKWISE;
-        skybox_render_pipeline_builder.override(rasterization_info);
-        // Disable depth testing
-        VkPipelineDepthStencilStateCreateInfo depth_info = {};
-        depth_info.sType = VK_STRUCTURE_TYPE_PIPELINE_DEPTH_STENCIL_STATE_CREATE_INFO;
-        depth_info.pNext = nullptr;
-        depth_info.depthTestEnable = VK_FALSE;
-        depth_info.depthWriteEnable = VK_FALSE;
-        depth_info.depthCompareOp = VK_COMPARE_OP_LESS;
-        depth_info.depthBoundsTestEnable = VK_FALSE;
-        depth_info.stencilTestEnable = VK_FALSE;
-        depth_info.front = {};
-        depth_info.back = {};
-        depth_info.minDepthBounds = 0.0f;
-        depth_info.maxDepthBounds = 1.0f;
-        skybox_render_pipeline_builder.override(depth_info);
-        vk_types::Pipeline skybox_pipeline = skybox_render_pipeline_builder.build();
+        vk_types::Pipeline skybox_pipeline = {};
+        {
+            VkShaderModule skybox_vert_shader = vk_pipeline::init_shader_module(context.device, "../../../src/shaders/skybox.glsl.vert.spv", lifetime);
+            VkShaderModule skybox_frag_shader = vk_pipeline::init_shader_module(context.device, "../../../src/shaders/skybox.glsl.frag.spv", lifetime);
+            VkPushConstantRange skybox_pc_range = push_constant_range<SkyboxPassPushConstants>(VK_SHADER_STAGE_FRAGMENT_BIT);
+            VkPipelineLayout skybox_pipeline_layout = vk_pipeline::init_pipeline_layout(context.device, descriptor_layouts.skybox, skybox_pc_range, lifetime);
+            vk_pipeline::GraphicsPipelineBuilder skybox_render_pipeline_builder = vk_pipeline::GraphicsPipelineBuilder(context.device, skybox_pipeline_layout, skybox_vert_shader, skybox_frag_shader, context.draw_target.image_format, VK_FORMAT_UNDEFINED, lifetime);
+            // Set up rasterization the same, but so that the inside of the geometry is drawn
+            VkPipelineRasterizationStateCreateInfo rasterization_info = {};
+            rasterization_info.sType = VK_STRUCTURE_TYPE_PIPELINE_RASTERIZATION_STATE_CREATE_INFO;
+            rasterization_info.pNext = nullptr;
+            rasterization_info.polygonMode = VK_POLYGON_MODE_FILL;
+            rasterization_info.lineWidth = 1.0f;
+            rasterization_info.cullMode = VK_CULL_MODE_FRONT_BIT;
+            rasterization_info.frontFace = VK_FRONT_FACE_COUNTER_CLOCKWISE;
+            skybox_render_pipeline_builder.override(rasterization_info);
+            // Disable depth testing
+            VkPipelineDepthStencilStateCreateInfo depth_info = {};
+            depth_info.sType = VK_STRUCTURE_TYPE_PIPELINE_DEPTH_STENCIL_STATE_CREATE_INFO;
+            depth_info.pNext = nullptr;
+            depth_info.depthTestEnable = VK_FALSE;
+            depth_info.depthWriteEnable = VK_FALSE;
+            depth_info.depthCompareOp = VK_COMPARE_OP_LESS;
+            depth_info.depthBoundsTestEnable = VK_FALSE;
+            depth_info.stencilTestEnable = VK_FALSE;
+            depth_info.front = {};
+            depth_info.back = {};
+            depth_info.minDepthBounds = 0.0f;
+            depth_info.maxDepthBounds = 1.0f;
+            skybox_render_pipeline_builder.override(depth_info);
+            skybox_pipeline = skybox_render_pipeline_builder.build();
+        }
 
+        /// Assemble the jar cutaway mask pipeline
+        vk_types::Pipeline jar_cutaway_mask_pipeline = {};
+        {
+            VkShaderModule jar_cutaway_mask_vert_shader = vk_pipeline::init_shader_module(context.device, "../../../src/shaders/jar_cutaway_mask.glsl.vert.spv", lifetime);
+            VkShaderModule jar_cutaway_mask_frag_shader = vk_pipeline::init_shader_module(context.device, "../../../src/shaders/jar_cutaway_mask.glsl.frag.spv", lifetime);
+            VkPipelineLayout jar_cutaway_mask_pipeline_layout = vk_pipeline::init_pipeline_layout(context.device, descriptor_layouts.jar_cutaway_mask, lifetime);
+            vk_pipeline::GraphicsPipelineBuilder jar_cutaway_mask_pipeline_builder = vk_pipeline::GraphicsPipelineBuilder(context.device, jar_cutaway_mask_pipeline_layout, jar_cutaway_mask_vert_shader, jar_cutaway_mask_frag_shader, context.jar_cutaway_mask.image_format, context.jar_cutaway_mask_depth.image_format, lifetime);
+            // Set up rasterization so that both the inward and outward faces generate fragments
+            VkPipelineRasterizationStateCreateInfo rasterization_info = {};
+            rasterization_info.sType = VK_STRUCTURE_TYPE_PIPELINE_RASTERIZATION_STATE_CREATE_INFO;
+            rasterization_info.pNext = nullptr;
+            rasterization_info.polygonMode = VK_POLYGON_MODE_FILL;
+            rasterization_info.lineWidth = 1.0f;
+            rasterization_info.cullMode = VK_CULL_MODE_NONE;
+            rasterization_info.frontFace = VK_FRONT_FACE_COUNTER_CLOCKWISE;
+            jar_cutaway_mask_pipeline_builder.override(rasterization_info);
+            // Disable depth testing, but enable depth write. Surface depth will be referenced later on in compositing.
+            VkPipelineDepthStencilStateCreateInfo depth_info = {};
+            depth_info.sType = VK_STRUCTURE_TYPE_PIPELINE_DEPTH_STENCIL_STATE_CREATE_INFO;
+            depth_info.pNext = nullptr;
+            depth_info.depthTestEnable = VK_FALSE;
+            depth_info.depthWriteEnable = VK_TRUE;
+            depth_info.depthCompareOp = VK_COMPARE_OP_LESS;
+            depth_info.depthBoundsTestEnable = VK_FALSE;
+            depth_info.stencilTestEnable = VK_FALSE;
+            depth_info.front = {};
+            depth_info.back = {};
+            depth_info.minDepthBounds = 0.0f;
+            depth_info.maxDepthBounds = 1.0f;
+            jar_cutaway_mask_pipeline_builder.override(depth_info);
+            // Unconditional blending is desired. Can't just discard the outward fragments because those are needed to generate the depth
+            VkPipelineColorBlendAttachmentState color_blend_attachment{};
+            color_blend_attachment.colorWriteMask = VK_COLOR_COMPONENT_R_BIT | VK_COLOR_COMPONENT_G_BIT | VK_COLOR_COMPONENT_B_BIT | VK_COLOR_COMPONENT_A_BIT;
+            color_blend_attachment.blendEnable = VK_TRUE;
+            color_blend_attachment.srcColorBlendFactor = VK_BLEND_FACTOR_ONE;
+            color_blend_attachment.dstColorBlendFactor = VK_BLEND_FACTOR_ONE;
+            color_blend_attachment.colorBlendOp = VK_BLEND_OP_ADD;
+            color_blend_attachment.srcAlphaBlendFactor = VK_BLEND_FACTOR_ONE;
+            color_blend_attachment.dstAlphaBlendFactor = VK_BLEND_FACTOR_ONE;
+            color_blend_attachment.alphaBlendOp = VK_BLEND_OP_ADD;
+            VkPipelineColorBlendStateCreateInfo color_blend_info = {};
+            color_blend_info.sType = VK_STRUCTURE_TYPE_PIPELINE_COLOR_BLEND_STATE_CREATE_INFO;
+            color_blend_info.pNext = nullptr;
+            color_blend_info.logicOpEnable = VK_FALSE;
+            color_blend_info.logicOp = VK_LOGIC_OP_COPY;
+            color_blend_info.attachmentCount = 1;
+            color_blend_info.pAttachments = &color_blend_attachment;
+            jar_cutaway_mask_pipeline_builder.override(color_blend_info);
+            jar_cutaway_mask_pipeline = jar_cutaway_mask_pipeline_builder.build();
+        }
 
         Pipelines pipes =  Pipelines {
-            .graphics = graphics_pipeline,
-            .compute = compute_pipeline,
+            .jar_cutaway_mask = jar_cutaway_mask_pipeline,
+            .space = space_pipeline,
+            .grid = grid_pipeline,
             .skybox = skybox_pipeline,
+            .compose = compose_pipeline
         };
 
         return pipes;
     }
 
-    GlobalUniforms build_global_uniforms(vk_types::Context& context, const size_t buffer_count, vk_types::CleanupProcedures& lifetime) {
+    BufferedUniform<GlobalUniforms> build_global_uniforms(vk_types::Context& context, const size_t buffer_count, vk_types::CleanupProcedures& lifetime) {
 
         glm::mat4 view = glm::rotate(glm::translate(glm::mat4(1.0f), glm::vec3(0.0f, 0.0f, 2.0f)), 0.0f, glm::vec3(0.0f, 1.0f, 0.0f));
         view = glm::translate(view, glm::vec3(0.0f, 0.0f, 2.0f));
-        BufferedUniform<glm::mat4> view_ubo = BufferedUniform<glm::mat4>(context, view, buffer_count, lifetime);
         
         glm::mat4 projection = glm::transpose(glm::perspective(45.0f, 4.0f/3.0f, 1.0f, 1000.0f));
         projection = glm::transpose(projection);
@@ -432,28 +514,95 @@ namespace vk_layer {
                                             0.0f, 0.0f, 1.0f, 0.0f,
                                             0.0f, 0.0f, 0.0f, 1.0f);
         projection = projection * vulkan_flip;
-        BufferedUniform<glm::mat4> projection_ubo = BufferedUniform<glm::mat4>(context, projection, buffer_count, lifetime);
 
-        BufferedUniform<glm::vec4> sun_ubo = BufferedUniform<glm::vec4>(context, glm::vec4(0.0f, 0.0f, 1.0f, 0.0f), buffer_count, lifetime);
-
-        GlobalUniforms global_buffers = GlobalUniforms {
-            view_ubo,
-            projection_ubo,
-            sun_ubo
+        GlobalUniforms uniform_contents = GlobalUniforms {
+            view,
+            projection,
+            glm::vec4(0.0f, 0.0f, 1.0f, 0.0f)
         };
 
-        return global_buffers;
+        return BufferedUniform<GlobalUniforms>(context, uniform_contents, buffer_count, lifetime);
     }
 
-    SkyboxUniforms build_skybox_uniforms(vk_types::Context& context, const size_t buffer_count, vk_types::CleanupProcedures& lifetime) {
+    BufferedUniform<SkyboxUniforms> build_skybox_uniforms(vk_types::Context& context, const size_t buffer_count, vk_types::CleanupProcedures& lifetime) {
         glm::mat4 cam_rotation = glm::mat4(1.0f);
-        BufferedUniform<glm::mat4> cam_rotation_ubo = BufferedUniform<glm::mat4>(context, cam_rotation, buffer_count, lifetime);
 
-        SkyboxUniforms skybox_buffers = SkyboxUniforms {
-            cam_rotation_ubo
+        SkyboxUniforms uniform_contents = SkyboxUniforms {
+            cam_rotation
         };
 
-        return skybox_buffers;
+        return BufferedUniform<SkyboxUniforms>(context, uniform_contents, buffer_count, lifetime);
+    }
+
+    RenderTargets build_render_targets(vk_types::Context& context, vk_types::CleanupProcedures& lifetime) {
+        
+        // Build a bunch of draw targets
+        VkFormat full_color_target_format = VK_FORMAT_R16G16B16A16_SFLOAT;
+        VkFormat jar_cutaway_target_format = VK_FORMAT_R16_SFLOAT;
+        VkImageUsageFlags draw_target_flags = 
+            VK_IMAGE_USAGE_TRANSFER_DST_BIT 
+            | VK_IMAGE_USAGE_TRANSFER_SRC_BIT 
+            | VK_IMAGE_USAGE_STORAGE_BIT 
+            | VK_IMAGE_USAGE_COLOR_ATTACHMENT_BIT;
+        VkExtent2D draw_target_extent = {
+            context.swapchain.extent.width,
+            context.swapchain.extent.height
+        };
+
+        const uint32_t NO_MIPMAP = 1;
+        vk_types::AllocatedImage compose_draw_target = vk_image::init_allocated_image(context.device, context.allocator, vk_image::Representation::Flat, full_color_target_format, draw_target_flags, NO_MIPMAP, draw_target_extent, lifetime);
+        vk_types::AllocatedImage space_draw_target = vk_image::init_allocated_image(context.device, context.allocator, vk_image::Representation::Flat, full_color_target_format, draw_target_flags, NO_MIPMAP, draw_target_extent, lifetime);
+        vk_types::AllocatedImage grid_draw_target = vk_image::init_allocated_image(context.device, context.allocator, vk_image::Representation::Flat, full_color_target_format, draw_target_flags, NO_MIPMAP, draw_target_extent, lifetime);
+        vk_types::AllocatedImage jar_cutaway_draw_target = vk_image::init_allocated_image(context.device, context.allocator, vk_image::Representation::Flat, jar_cutaway_target_format, draw_target_flags, NO_MIPMAP, draw_target_extent, lifetime);
+        
+        // Allocate depth targets as well for the draw targets that write to them
+        VkFormat depth_buffer_format = VK_FORMAT_D16_UNORM;
+        VkImageUsageFlags depth_buffer_flags = 
+            VK_IMAGE_USAGE_DEPTH_STENCIL_ATTACHMENT_BIT
+            | VK_IMAGE_USAGE_SAMPLED_BIT
+            | VK_IMAGE_USAGE_TRANSFER_DST_BIT;
+        VkExtent2D depth_buffer_extent = {
+            context.swapchain.extent.width,
+            context.swapchain.extent.height
+        };
+
+        vk_types::AllocatedImage space_depth_buffer = vk_image::init_allocated_image(context.device, context.allocator, vk_image::Representation::Flat, depth_buffer_format, depth_buffer_flags, NO_MIPMAP, depth_buffer_extent, lifetime);
+        vk_types::AllocatedImage jar_cutaway_depth_buffer = vk_image::init_allocated_image(context.device, context.allocator, vk_image::Representation::Flat, depth_buffer_format, depth_buffer_flags, NO_MIPMAP, depth_buffer_extent, lifetime);
+
+        // All sampled render targets will use the same sampler
+        VkSampler linear_sampler = vk_image::init_linear_sampler(context);
+
+        // Register all of the render targets with descriptor handles
+        // The grid image is both stored and sampled, so handles are registered for both types and the sampler is registered separately
+        uint32_t grid_draw_target_sampled_index = context.mega_descriptor_set.register_sampled_image_descriptor(context.device, grid_draw_target.image_view);
+        uint32_t grid_draw_target_storage_index = context.mega_descriptor_set.register_storage_image_descriptor(context.device, grid_draw_target.image_view);
+        uint32_t linear_sampler_index = context.mega_descriptor_set.register_sampler_descriptor(context.device, linear_sampler);
+        // The compose target is the final step so it's unnecessary to have a sampled version
+        uint32_t compose_draw_target_storage_index = context.mega_descriptor_set.register_storage_image_descriptor(context.device, compose_draw_target.image_view);
+
+        // The rest are drawn to via graphics pipelines, so a simple combined image sampler for each will do.
+        uint32_t space_draw_target_index = context.mega_descriptor_set.register_combined_image_sampler_descriptor(context.device, space_draw_target.image_view, linear_sampler);
+        uint32_t space_depth_buffer_index = context.mega_descriptor_set.register_combined_image_sampler_descriptor(context.device, space_depth_buffer.image_view, linear_sampler);
+        uint32_t jar_cutaway_draw_target_index = context.mega_descriptor_set.register_combined_image_sampler_descriptor(context.device, jar_cutaway_draw_target.image_view, linear_sampler);
+        uint32_t jar_cutaway_depth_buffer_index = context.mega_descriptor_set.register_combined_image_sampler_descriptor(context.device, jar_cutaway_depth_buffer.image_view, linear_sampler);
+
+        RenderTargets target_indices = {};
+        target_indices.grid_sampled_index = grid_draw_target_sampled_index;
+        target_indices.grid_sampler_index = linear_sampler_index;
+        target_indices.grid_storage_index = grid_draw_target_storage_index;
+        target_indices.grid = grid_draw_target;
+        target_indices.compose_storage_index = compose_draw_target_storage_index;
+        target_indices.compose_storage = compose_draw_target;
+        target_indices.space_index = space_draw_target_index;
+        target_indices.space = space_draw_target;
+        target_indices.space_depth_index = space_depth_buffer_index;
+        target_indices.space_depth = space_depth_buffer;
+        target_indices.jar_mask_index = jar_cutaway_draw_target_index;
+        target_indices.jar_mask = jar_cutaway_draw_target;
+        target_indices.jar_mask_depth_index = jar_cutaway_depth_buffer_index;
+        target_indices.jar_mask_depth = jar_cutaway_depth_buffer;
+        
+        return target_indices;
     }
 
     Drawable make_drawable(vk_types::Context& context, const geometry::HostModel& model_data) {
@@ -469,8 +618,15 @@ namespace vk_layer {
         return drawable;
     }
 
-    DrawState draw(const vk_types::Context& vk_res, const Pipelines& pipelines, const std::vector<Drawable>& drawables, const Drawable& skybox, const SkyboxTexture& skybox_texture, const DrawState& state) {
-        // TODO: Fix this so that it actually does frames in flight. May need first-frame checks for each buffer slot.
+    DrawState draw( const vk_types::Context& vk_res, 
+                    const Pipelines& pipelines, 
+                    const RenderTargets& render_targets,
+                    const std::vector<Drawable>& drawables, 
+                    const std::vector<Drawable>& masking_jars, 
+                    const Drawable& skybox, 
+                    const uint32_t skybox_texture_index, 
+                    const DrawState& state)
+    {
         // Wait for previous frame to finish drawing (if applicable). Timeout 1s
         if (state.frame_num >= vk_res.buffer_count) {
             uint32_t wait_frame = state.frame_in_flight;
@@ -523,27 +679,118 @@ namespace vk_layer {
             exit(EXIT_FAILURE);
         }
 
-        // Transition the acquired swapchain image into a drawable format
-        // transition_image(cmd, vk_res.swapchain.images[swapchain_image_index], VK_IMAGE_LAYOUT_UNDEFINED, VK_IMAGE_LAYOUT_GENERAL);
-
         // Make the draw target drawable by compute shaders
-        vk_image::transition_image(cmd, vk_res.draw_target.image, VK_IMAGE_LAYOUT_UNDEFINED, VK_IMAGE_LAYOUT_GENERAL);
-        draw_background(cmd, vk_res.draw_target, pipelines.compute, state);
+        sync::transition_image(cmd, render_targets.grid.image, VK_IMAGE_LAYOUT_UNDEFINED, VK_IMAGE_LAYOUT_GENERAL);
+        auto get_grid_descriptor_sets = [&]() {
+            std::vector<VkDescriptorSet> sets = {
+                vk_res.mega_descriptor_set.bundle.set
+            };
+            return sets;
+        };
+        auto set_grid_push_constants = [&]() {
+            GridPassPushConstants constants = {};
+            constants.grid_storage_index = render_targets.grid_storage_index;
+            vkCmdPushConstants(cmd, pipelines.grid.layout, VK_SHADER_STAGE_COMPUTE_BIT, 0, sizeof(GridPassPushConstants), &constants);
+        };
+        draw_compute(cmd, 
+                     get_grid_descriptor_sets,
+                     set_grid_push_constants,
+                     pipelines.grid,
+                     std::ceil(render_targets.grid.image_extent.width / 16.0),
+                     std::ceil(render_targets.grid.image_extent.height / 16.0),
+                     state);
 
-        vk_image::transition_image(cmd, vk_res.draw_target.image, VK_IMAGE_LAYOUT_GENERAL, VK_IMAGE_LAYOUT_COLOR_ATTACHMENT_OPTIMAL);
-        draw_background_skybox(cmd, vk_res.draw_target, pipelines.skybox, skybox, skybox_texture, state);
+        // Draw the skybox onto the target
+        sync::transition_image(cmd, render_targets.space.image, VK_IMAGE_LAYOUT_GENERAL, VK_IMAGE_LAYOUT_COLOR_ATTACHMENT_OPTIMAL);
+        auto get_skybox_descriptor_sets = [&](size_t piece) {
+            std::vector<VkDescriptorSet> graphics_descriptor_sets = { 
+                state.skybox_dynamic_uniforms.get_descriptor_set(state.frame_in_flight),
+                vk_res.mega_descriptor_set.bundle.set
+            };
+            return graphics_descriptor_sets;
+        };
+        auto set_skybox_push_constants = [&](size_t piece) {
+            SkyboxPassPushConstants constants = {};
+            constants.skybox_texture_index = skybox_texture_index;
+            vkCmdPushConstants(cmd, pipelines.skybox.layout, VK_SHADER_STAGE_FRAGMENT_BIT, 0, sizeof(SkyboxPassPushConstants), &constants);
+        };
+        draw_background_skybox(cmd, get_skybox_descriptor_sets, set_skybox_push_constants, render_targets.space, pipelines.skybox, skybox, state);
+        sync::transition_image(cmd, render_targets.space.image, VK_IMAGE_LAYOUT_COLOR_ATTACHMENT_OPTIMAL, VK_IMAGE_LAYOUT_COLOR_ATTACHMENT_OPTIMAL);
 
+        // Build the jar cutaway mask
+        for (auto& jar : masking_jars) {
+            auto get_jar_descriptor_sets = [&](size_t piece) {
+                std::vector<VkDescriptorSet> jar_descriptor_sets = { 
+                    state.main_dynamic_uniforms.get_descriptor_set(state.frame_in_flight), 
+                    jar.transform.get_descriptor_set(state.frame_in_flight)
+                };
+                return jar_descriptor_sets;
+            };
+            bool CLEAR_COLOR = true;
+            draw_geometry(cmd, get_jar_descriptor_sets, [](size_t piece){}, CLEAR_COLOR, render_targets.jar_mask, render_targets.jar_mask_depth, pipelines.jar_cutaway_mask, jar, state);
+        }
+        
+        // Draw the space scene
         for (auto& drawable : drawables) {
-            draw_geometry(cmd, vk_res.draw_target, vk_res.depth_buffer, pipelines.graphics, drawable, state);
+            auto get_graphics_descriptor_sets = [&](size_t piece) {
+                std::vector<VkDescriptorSet> graphics_descriptor_sets = { 
+                    state.main_dynamic_uniforms.get_descriptor_set(state.frame_in_flight),
+                    vk_res.mega_descriptor_set.bundle.set,
+                    drawable.transform.get_descriptor_set(state.frame_in_flight)
+                };
+                return graphics_descriptor_sets;
+            };
+            auto set_graphics_push_constants = [&](size_t piece) {
+                SpacePassPushConstants constants = {};
+                constants.diffuse_texture_index = drawable.gpu_model.diffuse_texture_indices[piece];
+                constants.normal_texture_index = drawable.gpu_model.normal_texture_indices[piece];
+                constants.specular_texture_index = drawable.gpu_model.specular_texture_indices[piece];
+
+                vkCmdPushConstants(cmd, pipelines.space.layout, VK_SHADER_STAGE_FRAGMENT_BIT, 0, sizeof(SpacePassPushConstants), &constants);
+            };
+            bool DO_NOT_CLEAR_COLOR = false;
+            draw_geometry(cmd, get_graphics_descriptor_sets, set_graphics_push_constants, DO_NOT_CLEAR_COLOR, render_targets.space, render_targets.space_depth, pipelines.space, drawable, state);
         }
 
+        // Compose the gbuffers together
+        sync::transition_image(cmd, render_targets.compose_storage.image, VK_IMAGE_LAYOUT_UNDEFINED, VK_IMAGE_LAYOUT_GENERAL);
+        sync::transition_image(cmd, render_targets.space.image, VK_IMAGE_LAYOUT_UNDEFINED, VK_IMAGE_LAYOUT_READ_ONLY_OPTIMAL);
+        sync::transition_image(cmd, render_targets.space_depth.image, VK_IMAGE_LAYOUT_UNDEFINED, VK_IMAGE_LAYOUT_READ_ONLY_OPTIMAL);
+        sync::transition_image(cmd, render_targets.jar_mask.image, VK_IMAGE_LAYOUT_UNDEFINED, VK_IMAGE_LAYOUT_READ_ONLY_OPTIMAL);
+        sync::transition_image(cmd, render_targets.jar_mask_depth.image, VK_IMAGE_LAYOUT_UNDEFINED, VK_IMAGE_LAYOUT_READ_ONLY_OPTIMAL);
+        sync::transition_image(cmd, render_targets.grid.image, VK_IMAGE_LAYOUT_UNDEFINED, VK_IMAGE_LAYOUT_READ_ONLY_OPTIMAL);
+        auto get_compose_descriptor_sets = [&]() {
+            std::vector<VkDescriptorSet> sets = {
+                vk_res.mega_descriptor_set.bundle.set
+            };
+            return sets;
+        };
+        auto set_compose_push_constants = [&]() {
+            ComposePassPushConstants constants = {};
+            constants.compose_storage_index = render_targets.compose_storage_index;
+            constants.grid_sampled_index = render_targets.grid_sampled_index;
+            constants.grid_sampler_index = render_targets.grid_sampler_index;
+            constants.jar_mask_depth_index = render_targets.jar_mask_depth_index;
+            constants.jar_mask_index = render_targets.jar_mask_index;
+            constants.space_depth_index = render_targets.space_depth_index;
+            constants.space_index = render_targets.space_index;
+            vkCmdPushConstants(cmd, pipelines.grid.layout, VK_SHADER_STAGE_COMPUTE_BIT, 0, sizeof(ComposePassPushConstants), &constants);
+        };
+        draw_compute(cmd, 
+                     get_compose_descriptor_sets,
+                     set_compose_push_constants,
+                     pipelines.compose,
+                     std::ceil(render_targets.compose_storage.image_extent.width / 16.0),
+                     std::ceil(render_targets.compose_storage.image_extent.height / 16.0),
+                     state);
+
         // Transfer from the draw target to the swapchain
-        vk_image::transition_image(cmd, vk_res.draw_target.image, VK_IMAGE_LAYOUT_COLOR_ATTACHMENT_OPTIMAL, VK_IMAGE_LAYOUT_TRANSFER_SRC_OPTIMAL);
-        vk_image::transition_image(cmd, vk_res.swapchain.images[swapchain_image_index], VK_IMAGE_LAYOUT_UNDEFINED, VK_IMAGE_LAYOUT_TRANSFER_DST_OPTIMAL);
-        vk_image::blit_image_to_image_no_mipmap(cmd, vk_res.draw_target.image, vk_res.swapchain.images[swapchain_image_index], vk_res.draw_target.image_extent, vk_res.swapchain.extent);
+        sync::transition_image(cmd, render_targets.compose_storage.image, VK_IMAGE_LAYOUT_GENERAL, VK_IMAGE_LAYOUT_TRANSFER_SRC_OPTIMAL);
+        sync::transition_image(cmd, vk_res.swapchain.images[swapchain_image_index], VK_IMAGE_LAYOUT_UNDEFINED, VK_IMAGE_LAYOUT_TRANSFER_DST_OPTIMAL);
+        vk_image::blit_image_to_image_no_mipmap(cmd, render_targets.compose_storage.image, vk_res.swapchain.images[swapchain_image_index], render_targets.compose_storage.image_extent, vk_res.swapchain.extent);
 
         // After drawing, transition the image to presentable
-        vk_image::transition_image(cmd, vk_res.swapchain.images[swapchain_image_index], VK_IMAGE_LAYOUT_TRANSFER_DST_OPTIMAL, VK_IMAGE_LAYOUT_PRESENT_SRC_KHR);
+        sync::transition_image(cmd, vk_res.swapchain.images[swapchain_image_index], VK_IMAGE_LAYOUT_TRANSFER_DST_OPTIMAL, VK_IMAGE_LAYOUT_PRESENT_SRC_KHR);
 
         // Finalize the command buffer, making it executable
         if ((vkEndCommandBuffer(cmd)) != VK_SUCCESS) {
@@ -584,31 +831,33 @@ namespace vk_layer {
         }
 
         /// Update state for next frame ///
-        glm::mat4 rotated_view = glm::rotate(state.main_dynamic_uniforms.view.get(), glm::radians(-0.01f), glm::vec3(0.0f, 1.0f, 0.0f));
+        glm::mat4 rotated_view = glm::rotate(state.main_dynamic_uniforms.get().view, glm::radians(-0.01f), glm::vec3(0.0f, 1.0f, 0.0f));
         //glm::mat4 rotated_view = state.main_dynamic_uniforms.view.get();
         //glm::vec4 rotated_sun = glm::rotate(state.main_dynamic_uniforms.sun_direction.get(), glm::radians(0.01f), glm::vec3(1.0f, 0.0f, 0.0f));
-        glm::vec4 rotated_sun = state.main_dynamic_uniforms.sun_direction.get();
+        glm::vec4 rotated_sun = state.main_dynamic_uniforms.get().sun_direction;
 
         // Face the same direction as the main rendering camera
         glm::mat4 cam_rotation = glm::mat4x4(rotated_view[0], rotated_view[1], rotated_view[2], glm::vec4(0.0f, 0.0f, 0.0f, 1.0f));
 
         auto next_frame_index = (state.frame_in_flight + 1) % vk_res.buffer_count;
-        GlobalUniforms updated_main_uniforms = state.main_dynamic_uniforms;
-        updated_main_uniforms.view.set(rotated_view);
-        updated_main_uniforms.view.push(next_frame_index);
-        updated_main_uniforms.sun_direction.set(rotated_sun);
-        updated_main_uniforms.sun_direction.push(next_frame_index);
+        GlobalUniforms updated_main_data = state.main_dynamic_uniforms.get();
+        updated_main_data.view = rotated_view;
+        updated_main_data.sun_direction = rotated_sun;
+        BufferedUniform<GlobalUniforms> new_global_uniforms = state.main_dynamic_uniforms;
+        new_global_uniforms.set(updated_main_data);
+        new_global_uniforms.push(next_frame_index);
 
-        SkyboxUniforms updated_skybox_uniforms = state.skybox_dynamic_uniforms;
-        updated_skybox_uniforms.cam_rotation.set(cam_rotation);
-        updated_skybox_uniforms.cam_rotation.push(next_frame_index);
+        SkyboxUniforms updated_skybox_data = { cam_rotation };
+        BufferedUniform<SkyboxUniforms> new_skybox_uniforms = state.skybox_dynamic_uniforms;
+        new_skybox_uniforms.set(updated_skybox_data);
+        new_skybox_uniforms.push(next_frame_index);
 
         return DrawState {
             .buf_num = static_cast<uint8_t>((state.buf_num + 1u) % vk_res.buffer_count),
             .frame_num = state.frame_num + 1,
             .frame_in_flight = next_frame_index,
-            .main_dynamic_uniforms = updated_main_uniforms,
-            .skybox_dynamic_uniforms = updated_skybox_uniforms
+            .main_dynamic_uniforms = new_global_uniforms,
+            .skybox_dynamic_uniforms = new_skybox_uniforms
         };
     }
 

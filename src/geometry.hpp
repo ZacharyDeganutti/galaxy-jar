@@ -59,9 +59,9 @@ namespace geometry {
         std::vector<vk_types::GpuMeshBuffers> vertex_buffers;
         std::vector<vk_types::PersistentUniformBuffer<MaterialProperties>> material_buffers;
         VkDescriptorSetLayout texture_layout;
-        std::vector<VkDescriptorSet> diffuse_texture_descriptors;
-        std::vector<VkDescriptorSet> normal_texture_descriptors;
-        std::vector<VkDescriptorSet> specular_texture_descriptors;
+        std::vector<uint32_t> diffuse_texture_indices;
+        std::vector<uint32_t> normal_texture_indices;
+        std::vector<uint32_t> specular_texture_indices;
     };
 
     // Accepts a file name, and a path to search for the file and corresponding material as arguments

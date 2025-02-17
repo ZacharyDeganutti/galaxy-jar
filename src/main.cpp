@@ -34,9 +34,9 @@ int main() {
     vk_types::Context context = vk_init::init(required_device_extensions, glfw_extensions, window);
     
     /// Setup for skybox background draw
-    vk_layer::SkyboxUniforms skybox_uniforms = vk_layer::build_skybox_uniforms(context, context.buffer_count, context.cleanup_procedures);
+    vk_layer::BufferedUniform<vk_layer::SkyboxUniforms> skybox_uniforms = vk_layer::build_skybox_uniforms(context, context.buffer_count, context.cleanup_procedures);
     vk_image::HostImage skybox_image = vk_image::load_rgba_cubemap("../../../assets/skybox/space-skybox.png");
-    vk_layer::SkyboxTexture skybox_texture = vk_layer::upload_skybox(context, skybox_image, context.cleanup_procedures);
+    uint32_t skybox_texture_index = vk_layer::upload_skybox(context, skybox_image, context.cleanup_procedures);
     vk_layer::Drawable skybox_cube;
     {
         geometry::AxisAlignedBasis basis = {
@@ -47,10 +47,6 @@ int main() {
         geometry::HostModel cube_model = geometry::load_obj_model("cube.obj", "../../../assets/cube/", basis);
         skybox_cube = vk_layer::make_drawable(context, cube_model);
     }
-    std::vector<VkDescriptorSetLayout> skybox_descriptor_set_layouts = { 
-        skybox_uniforms.cam_rotation.get_layout(),
-        skybox_texture.layout
-    };
 
     /// Setup for main geometry draw
     // Load other resources. We don't need the HostModel past upload so we can just dump it on the ground after upload since it can be pretty hefty.
@@ -73,19 +69,46 @@ int main() {
     }
 
     std::vector<vk_layer::Drawable> main_drawables = {dummy_drawable};
-    vk_layer::GlobalUniforms global_uniforms = vk_layer::build_global_uniforms(context, context.buffer_count, context.cleanup_procedures);
+    std::vector<vk_layer::Drawable> masking_jars = {dummy_drawable};
+
+    std::vector<VkDescriptorSetLayout> skybox_descriptor_set_layouts = { 
+        skybox_uniforms.get_layout(),
+        context.mega_descriptor_set.bundle.layout
+    };
+
+    vk_layer::BufferedUniform<vk_layer::GlobalUniforms> global_uniforms = vk_layer::build_global_uniforms(context, context.buffer_count, context.cleanup_procedures);
+
+    std::vector<VkDescriptorSetLayout> grid_descriptor_set_layouts = {
+        context.mega_descriptor_set.bundle.layout
+    };
+
     std::vector<VkDescriptorSetLayout> graphics_descriptor_set_layouts = { 
-        global_uniforms.view.get_layout(),
-        global_uniforms.projection.get_layout(),
-        global_uniforms.sun_direction.get_layout(),
+        global_uniforms.get_layout(),
+        context.mega_descriptor_set.bundle.layout,
         // TODO: All of the drawables currently have common layouts for resources, consider finding a cleaner way to model this
-        main_drawables[0].gpu_model.texture_layout,
-        main_drawables[0].gpu_model.texture_layout,
-        main_drawables[0].gpu_model.texture_layout,
         main_drawables[0].transform.get_layout(),
     };
 
-    vk_layer::Pipelines pipelines = vk_layer::build_pipelines(context, graphics_descriptor_set_layouts, skybox_descriptor_set_layouts, context.cleanup_procedures);
+    std::vector<VkDescriptorSetLayout> jar_cutaway_mask_descriptor_set_layouts = {
+        global_uniforms.get_layout(),
+        masking_jars[0].transform.get_layout(),
+    };
+
+    std::vector<VkDescriptorSetLayout> compose_descriptor_set_layouts = {
+        context.mega_descriptor_set.bundle.layout
+    };
+
+    vk_layer::DescriptorSetLayouts descriptor_layouts = {
+        grid_descriptor_set_layouts,
+        graphics_descriptor_set_layouts,
+        skybox_descriptor_set_layouts,
+        jar_cutaway_mask_descriptor_set_layouts,
+        compose_descriptor_set_layouts
+    };
+
+    vk_layer::Pipelines pipelines = vk_layer::build_pipelines(context, descriptor_layouts, context.cleanup_procedures);
+
+    vk_layer::RenderTargets render_target_indices = vk_layer::build_render_targets(context, context.cleanup_procedures);
 
     vk_layer::DrawState draw_state = {
         .buf_num = 0,
@@ -97,7 +120,7 @@ int main() {
     
     while(!glfwWindowShouldClose(window)) {
         glfwPollEvents();
-        draw_state = vk_layer::draw(context, pipelines, main_drawables, skybox_cube, skybox_texture, draw_state);
+        draw_state = vk_layer::draw(context, pipelines, render_target_indices, main_drawables, masking_jars, skybox_cube, skybox_texture_index, draw_state);
     }
 
     vk_layer::cleanup(context, context.cleanup_procedures);

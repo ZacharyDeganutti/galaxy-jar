@@ -276,14 +276,14 @@ namespace geometry {
         // Upload textures for all materials
         VkSampler linear_texture_sampler = vk_image::init_linear_sampler(context);
 
-        std::vector<VkDescriptorSet> diffuse_texture_descriptors;
-        diffuse_texture_descriptors.reserve(host_model.diffuse_textures.size());
+        std::vector<uint32_t> diffuse_texture_indices;
+        diffuse_texture_indices.reserve(host_model.diffuse_textures.size());
 
-        std::vector<VkDescriptorSet> specular_texture_descriptors;
-        specular_texture_descriptors.reserve(host_model.specular_textures.size());
+        std::vector<uint32_t> specular_texture_indices;
+        specular_texture_indices.reserve(host_model.specular_textures.size());
 
-        std::vector<VkDescriptorSet> normal_texture_descriptors;
-        normal_texture_descriptors.reserve(host_model.normal_textures.size());
+        std::vector<uint32_t> normal_texture_indices;
+        normal_texture_indices.reserve(host_model.normal_textures.size());
 
         for (auto& piece : host_model.vertex_attributes.pieces) {
             vk_descriptors::DescriptorAllocator descriptor_allocator = {};
@@ -304,14 +304,8 @@ namespace geometry {
                 diffuse_texture_image = vk_image::upload_image(context, white_pixel_texture, VK_FORMAT_R8G8B8A8_SRGB, VK_IMAGE_LAYOUT_SHADER_READ_ONLY_OPTIMAL);
             }
             
-            VkDescriptorSet diffuse_texture_descriptor = vk_descriptors::init_combined_image_sampler_descriptors(context.device,
-                diffuse_texture_image.image_view,
-                linear_texture_sampler,
-                texture_layout,
-                descriptor_allocator,
-                context.cleanup_procedures);
-            
-            diffuse_texture_descriptors.push_back(diffuse_texture_descriptor);
+            uint32_t diffuse_texture_index = context.mega_descriptor_set.register_combined_image_sampler_descriptor(context.device, diffuse_texture_image.image_view, linear_texture_sampler);
+            diffuse_texture_indices.push_back(diffuse_texture_index);
 
             // Specular texture
             auto& specular_texture = host_model.specular_textures[piece.material_index];
@@ -331,14 +325,9 @@ namespace geometry {
 
                 specular_texture_image = vk_image::upload_image(context, white_pixel_texture, VK_FORMAT_R8G8_UNORM, VK_IMAGE_LAYOUT_SHADER_READ_ONLY_OPTIMAL);
             }
-            VkDescriptorSet specular_texture_descriptor = vk_descriptors::init_combined_image_sampler_descriptors(context.device,
-                specular_texture_image.image_view,
-                linear_texture_sampler,
-                texture_layout,
-                descriptor_allocator,
-                context.cleanup_procedures);
-            
-            specular_texture_descriptors.push_back(specular_texture_descriptor);
+
+            uint32_t specular_texture_index = context.mega_descriptor_set.register_combined_image_sampler_descriptor(context.device, specular_texture_image.image_view, linear_texture_sampler);
+            specular_texture_indices.push_back(specular_texture_index);
 
             // Normal texture
             auto& normal_texture = host_model.normal_textures[piece.material_index];
@@ -356,14 +345,9 @@ namespace geometry {
                 };
                 normal_texture_image = vk_image::upload_image(context, gray_pixel_texture, VK_FORMAT_R8G8_UNORM, VK_IMAGE_LAYOUT_SHADER_READ_ONLY_OPTIMAL);
             }
-            VkDescriptorSet normal_texture_descriptor = vk_descriptors::init_combined_image_sampler_descriptors(context.device,
-                normal_texture_image.image_view,
-                linear_texture_sampler,
-                texture_layout,
-                descriptor_allocator,
-                context.cleanup_procedures);
-            
-            normal_texture_descriptors.push_back(normal_texture_descriptor);
+
+            uint32_t normal_texture_index = context.mega_descriptor_set.register_combined_image_sampler_descriptor(context.device, normal_texture_image.image_view, linear_texture_sampler);
+            normal_texture_indices.push_back(normal_texture_index);
         }
 
         // Upload material properties for all materials
@@ -379,9 +363,9 @@ namespace geometry {
             mesh_resources,
             material_buffers,
             texture_layout,
-            diffuse_texture_descriptors,
-            normal_texture_descriptors,
-            specular_texture_descriptors,
+            diffuse_texture_indices,
+            normal_texture_indices,
+            specular_texture_indices,
         };
 
         return gpu_model;

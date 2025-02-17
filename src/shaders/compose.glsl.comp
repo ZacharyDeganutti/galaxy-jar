@@ -1,0 +1,28 @@
+//GLSL version to use
+#version 460
+
+//size of a workgroup for compute
+layout (local_size_x = 16, local_size_y = 16) in;
+
+//descriptor bindings for the pipeline
+layout(rgba16f, set = 0, binding = 0) uniform image2D target;
+layout(set = 1, binding = 0) uniform sampler2D jar_mask;
+layout(set = 2, binding = 0) uniform sampler2D space_scene;
+layout(set = 3, binding = 0) uniform sampler2D parent_scene;
+
+
+void main() 
+{
+    ivec2 texel_coord = ivec2(gl_GlobalInvocationID.xy);
+	ivec2 size = imageSize(target);
+
+    vec2 sampler_coord = vec2(texel_coord.xy) / vec2(size); 
+
+    // Fade between parent and jar scene based on the blend factor from the jar mask
+    float blend_factor = texture(jar_mask, sampler_coord).r;
+    vec4 parent_color = texture(parent_scene, sampler_coord);
+    vec4 space_color = texture(space_scene, sampler_coord);
+    vec4 color = mix(space_color, parent_color, blend_factor);
+
+    imageStore(target, texel_coord, color);
+}
