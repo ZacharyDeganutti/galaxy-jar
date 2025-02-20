@@ -531,9 +531,10 @@ namespace vk_layer {
     RenderTargets build_render_targets(vk_types::Context& context, vk_types::CleanupProcedures& lifetime) {
         
         // Build a bunch of draw targets
-        VkFormat full_color_target_format = VK_FORMAT_R16G16B16A16_SFLOAT;
+        VkFormat full_color_intermediate_format = VK_FORMAT_R16G16B16A16_SFLOAT;
         VkFormat jar_cutaway_target_format = VK_FORMAT_R16_SFLOAT;
-        VkImageUsageFlags draw_target_flags = 
+        VkFormat full_color_target_format = VK_FORMAT_R8G8B8A8_SRGB;
+        VkImageUsageFlags draw_intermediate_flags = 
             VK_IMAGE_USAGE_TRANSFER_DST_BIT 
             | VK_IMAGE_USAGE_TRANSFER_SRC_BIT 
             | VK_IMAGE_USAGE_STORAGE_BIT 
@@ -545,10 +546,10 @@ namespace vk_layer {
         };
 
         const uint32_t NO_MIPMAP = 1;
-        vk_types::AllocatedImage compose_draw_target = vk_image::init_allocated_image(context.device, context.allocator, vk_image::Representation::Flat, full_color_target_format, draw_target_flags, NO_MIPMAP, draw_target_extent, lifetime);
-        vk_types::AllocatedImage space_draw_target = vk_image::init_allocated_image(context.device, context.allocator, vk_image::Representation::Flat, full_color_target_format, draw_target_flags, NO_MIPMAP, draw_target_extent, lifetime);
-        vk_types::AllocatedImage grid_draw_target = vk_image::init_allocated_image(context.device, context.allocator, vk_image::Representation::Flat, full_color_target_format, draw_target_flags, NO_MIPMAP, draw_target_extent, lifetime);
-        vk_types::AllocatedImage jar_cutaway_draw_target = vk_image::init_allocated_image(context.device, context.allocator, vk_image::Representation::Flat, jar_cutaway_target_format, draw_target_flags, NO_MIPMAP, draw_target_extent, lifetime);
+        vk_types::AllocatedImage compose_draw_target = vk_image::init_allocated_image(context.device, context.allocator, vk_image::Representation::Flat, full_color_target_format, draw_intermediate_flags, NO_MIPMAP, draw_target_extent, lifetime);
+        vk_types::AllocatedImage space_draw_target = vk_image::init_allocated_image(context.device, context.allocator, vk_image::Representation::Flat, full_color_intermediate_format, draw_intermediate_flags, NO_MIPMAP, draw_target_extent, lifetime);
+        vk_types::AllocatedImage grid_draw_target = vk_image::init_allocated_image(context.device, context.allocator, vk_image::Representation::Flat, full_color_intermediate_format, draw_intermediate_flags, NO_MIPMAP, draw_target_extent, lifetime);
+        vk_types::AllocatedImage jar_cutaway_draw_target = vk_image::init_allocated_image(context.device, context.allocator, vk_image::Representation::Flat, jar_cutaway_target_format, draw_intermediate_flags, NO_MIPMAP, draw_target_extent, lifetime);
         
         // Allocate depth targets as well for the draw targets that write to them
         VkFormat depth_buffer_format = VK_FORMAT_D16_UNORM;
