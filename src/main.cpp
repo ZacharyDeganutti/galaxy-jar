@@ -51,6 +51,7 @@ int main() {
     /// Setup for main geometry draw
     // Load other resources. We don't need the HostModel past upload so we can just dump it on the ground after upload since it can be pretty hefty.
     vk_layer::Drawable dummy_drawable;
+    vk_layer::Drawable jar_drawable;
     {
         geometry::AxisAlignedBasis blender_basis = {
             .x = geometry::Direction::Right,
@@ -64,12 +65,18 @@ int main() {
             .z = geometry::Direction::Forward
         };
         //geometry::HostModel dummy_model = geometry::load_obj_model("exterior.obj", "../../../assets/bistro/", unmodified_basis);
-        geometry::HostModel dummy_model = geometry::load_obj_model("WATER_WORLD.obj", "../../../assets/planetoid/", unmodified_basis);
+        geometry::HostModel dummy_model = geometry::load_obj_model("planetoid.obj", "../../../assets/planetoid/", blender_basis);
+        geometry::HostModel jar_model = geometry::load_obj_model("WATER_WORLD.obj", "../../../assets/planetoid/", blender_basis);
         dummy_drawable = vk_layer::make_drawable(context, dummy_model);
+        jar_drawable = vk_layer::make_drawable(context, jar_model);
+        auto transform = jar_drawable.transform.get();
+        jar_drawable.transform.set(glm::scale(transform, glm::vec3(2.0f, 2.0f, 2.0f)));
+        jar_drawable.transform.push(0);
+        jar_drawable.transform.push(1);
     }
 
     std::vector<vk_layer::Drawable> main_drawables = {dummy_drawable};
-    std::vector<vk_layer::Drawable> masking_jars = {dummy_drawable};
+    std::vector<vk_layer::Drawable> masking_jars = {jar_drawable};
 
     std::vector<VkDescriptorSetLayout> skybox_descriptor_set_layouts = { 
         skybox_uniforms.get_layout(),
@@ -91,6 +98,7 @@ int main() {
 
     std::vector<VkDescriptorSetLayout> jar_cutaway_mask_descriptor_set_layouts = {
         global_uniforms.get_layout(),
+        context.mega_descriptor_set.bundle.layout,
         masking_jars[0].transform.get_layout(),
     };
 
@@ -100,15 +108,16 @@ int main() {
 
     vk_layer::DescriptorSetLayouts descriptor_layouts = {
         grid_descriptor_set_layouts,
-        graphics_descriptor_set_layouts,
         skybox_descriptor_set_layouts,
         jar_cutaway_mask_descriptor_set_layouts,
+        graphics_descriptor_set_layouts,
         compose_descriptor_set_layouts
     };
 
-    vk_layer::Pipelines pipelines = vk_layer::build_pipelines(context, descriptor_layouts, context.cleanup_procedures);
+    vk_layer::RenderTargets render_targets = vk_layer::build_render_targets(context, context.cleanup_procedures);
+    vk_layer::Pipelines pipelines = vk_layer::build_pipelines(context, descriptor_layouts, render_targets, context.cleanup_procedures);
 
-    vk_layer::RenderTargets render_target_indices = vk_layer::build_render_targets(context, context.cleanup_procedures);
+    
 
     vk_layer::DrawState draw_state = {
         .buf_num = 0,
@@ -120,7 +129,7 @@ int main() {
     
     while(!glfwWindowShouldClose(window)) {
         glfwPollEvents();
-        draw_state = vk_layer::draw(context, pipelines, render_target_indices, main_drawables, masking_jars, skybox_cube, skybox_texture_index, draw_state);
+        draw_state = vk_layer::draw(context, pipelines, render_targets, main_drawables, masking_jars, skybox_cube, skybox_texture_index, draw_state);
     }
 
     vk_layer::cleanup(context, context.cleanup_procedures);

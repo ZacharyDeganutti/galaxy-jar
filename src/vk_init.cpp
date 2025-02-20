@@ -132,7 +132,13 @@ namespace vk_init {
         while (next != nullptr) {
             if (next->sType == VK_STRUCTURE_TYPE_PHYSICAL_DEVICE_VULKAN_1_2_FEATURES) {
                 VkPhysicalDeviceVulkan12Features* features12 = reinterpret_cast<VkPhysicalDeviceVulkan12Features*>(next);
-                if (features12->descriptorIndexing && features12->descriptorBindingPartiallyBound && features12->bufferDeviceAddress) {
+                if (features12->descriptorIndexing && 
+                    features12->descriptorBindingPartiallyBound && 
+                    features12->bufferDeviceAddress && 
+                    features12->runtimeDescriptorArray &&
+                    features12->shaderStorageImageArrayNonUniformIndexing &&
+                    features12->shaderSampledImageArrayNonUniformIndexing) 
+                {
                     return true;
                 }
                 else {
@@ -387,8 +393,11 @@ namespace vk_init {
         VkPhysicalDeviceVulkan12Features features12 = {};
         features12.sType = VK_STRUCTURE_TYPE_PHYSICAL_DEVICE_VULKAN_1_2_FEATURES;
         features12.bufferDeviceAddress = VK_TRUE;
+        features12.runtimeDescriptorArray = VK_TRUE;
         features12.descriptorBindingPartiallyBound = VK_TRUE;
         features12.descriptorIndexing = VK_TRUE;
+        features12.shaderStorageImageArrayNonUniformIndexing = VK_TRUE;
+        features12.shaderSampledImageArrayNonUniformIndexing = VK_TRUE;
         features12.pNext = &features13;
 
         VkPhysicalDeviceFeatures2 features2 = {};
@@ -700,63 +709,6 @@ namespace vk_init {
 
         const VmaAllocator allocator = init_allocator(vulkan_instance, vulkan_device, vulkan_gpu, cleanup_procedures);
 
-        // Provide an image that will be the intermediate draw target
-        VkFormat draw_target_format = VK_FORMAT_R16G16B16A16_SFLOAT;
-        VkImageUsageFlags draw_target_flags = 
-            VK_IMAGE_USAGE_TRANSFER_DST_BIT 
-            | VK_IMAGE_USAGE_TRANSFER_SRC_BIT 
-            | VK_IMAGE_USAGE_STORAGE_BIT 
-            | VK_IMAGE_USAGE_COLOR_ATTACHMENT_BIT;
-        VkExtent2D draw_target_extent = {
-            swapchain.extent.width,
-            swapchain.extent.height
-        };
-
-        const uint32_t NO_MIPMAP = 1;
-        vk_types::AllocatedImage draw_target = vk_image::init_allocated_image(vulkan_device, allocator, vk_image::Representation::Flat, draw_target_format, draw_target_flags, NO_MIPMAP, draw_target_extent, cleanup_procedures);
-
-        // Allocate a depth target as well
-        // TODO: make more robust format checks
-        VkFormat depth_buffer_format = VK_FORMAT_D16_UNORM;
-        VkImageUsageFlags depth_buffer_flags = 
-            VK_IMAGE_USAGE_DEPTH_STENCIL_ATTACHMENT_BIT
-            | VK_IMAGE_USAGE_SAMPLED_BIT
-            | VK_IMAGE_USAGE_TRANSFER_DST_BIT;
-        VkExtent2D depth_buffer_extent = {
-            swapchain.extent.width,
-            swapchain.extent.height
-        };
-
-        vk_types::AllocatedImage depth_buffer = vk_image::init_allocated_image(vulkan_device, allocator, vk_image::Representation::Flat, depth_buffer_format, depth_buffer_flags, NO_MIPMAP, depth_buffer_extent, cleanup_procedures);
-
-        // Provide an image for the cutaway mask render target
-        VkFormat jar_cutaway_target_format = VK_FORMAT_R16_SFLOAT;
-        VkImageUsageFlags jar_cutaway_target_flags = 
-            VK_IMAGE_USAGE_TRANSFER_DST_BIT 
-            | VK_IMAGE_USAGE_TRANSFER_SRC_BIT 
-            | VK_IMAGE_USAGE_STORAGE_BIT 
-            | VK_IMAGE_USAGE_COLOR_ATTACHMENT_BIT;
-        VkExtent2D jar_cutaway_target_extent = {
-            swapchain.extent.width,
-            swapchain.extent.height
-        };
-
-        vk_types::AllocatedImage jar_cutaway_target = vk_image::init_allocated_image(vulkan_device, allocator, vk_image::Representation::Flat, jar_cutaway_target_format, jar_cutaway_target_flags, NO_MIPMAP, jar_cutaway_target_extent, cleanup_procedures);
-
-        // Allocate a depth target as well
-        // TODO: make more robust format checks
-        VkFormat jar_cutaway_depth_buffer_format = VK_FORMAT_D16_UNORM;
-        VkImageUsageFlags jar_cutaway_depth_buffer_flags = 
-            VK_IMAGE_USAGE_DEPTH_STENCIL_ATTACHMENT_BIT
-            | VK_IMAGE_USAGE_SAMPLED_BIT
-            | VK_IMAGE_USAGE_TRANSFER_DST_BIT;
-        VkExtent2D jar_cutaway_depth_buffer_extent = {
-            swapchain.extent.width,
-            swapchain.extent.height
-        };
-
-        vk_types::AllocatedImage jar_cutaway_depth_buffer = vk_image::init_allocated_image(vulkan_device, allocator, vk_image::Representation::Flat, jar_cutaway_depth_buffer_format, jar_cutaway_depth_buffer_flags, NO_MIPMAP, jar_cutaway_depth_buffer_extent, cleanup_procedures);
-
         vk_descriptors::DescriptorAllocator descriptor_allocator = {};
 
         constexpr size_t POOL_SIZES = 1000;
@@ -774,10 +726,6 @@ namespace vk_init {
             synchronization,
             fence_immediate,
             allocator,
-            draw_target,
-            depth_buffer,
-            jar_cutaway_target,
-            jar_cutaway_depth_buffer,
             mega_descriptor_set,
             DOUBLE_BUFFER
         };

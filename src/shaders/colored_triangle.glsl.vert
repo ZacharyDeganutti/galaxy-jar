@@ -9,22 +9,20 @@ layout (location = 4) out vec2 tex_interp;
 layout (location = 5) out vec3 position_interp;
 
 //descriptor bindings for the pipeline
-layout(set = 0, binding = 0) uniform ViewMatrix {
-	mat4x4 data;
-} view;
+layout(set = 0, binding = 0) uniform Transforms {
+	mat4 view;
+    mat4 projection;
+    vec4 sun_direction;
+} transforms;
 
-layout(set = 1, binding = 0) uniform ProjectionMatrix {
-	mat4x4 data;
-} projection;
-
-layout(set = 6, binding = 0) uniform ModelMatrix {
+layout(set = 2, binding = 0) uniform ModelMatrix {
 	mat4x4 data;
 } model;
 
 void main() 
 {
-	gl_Position = projection.data * view.data * model.data * vec4(vertex, 1.0f);
-	normal_interp = normalize(transpose(inverse(mat3(view.data) * mat3(model.data))) * normal);
+	gl_Position = transforms.projection * transforms.view * model.data * vec4(vertex, 1.0f);
+	normal_interp = normalize(transpose(inverse(mat3(transforms.view) * mat3(model.data))) * normal);
 	tex_interp = tex_coord;
-	position_interp = (view.data * model.data * vec4(vertex, 1.0f)).xyz;
+	position_interp = (transforms.view * model.data * vec4(vertex, 1.0f)).xyz;
 }

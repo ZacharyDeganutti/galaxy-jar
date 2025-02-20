@@ -1,5 +1,8 @@
 #version 450
 
+// For descriptor sampling
+#extension GL_EXT_nonuniform_qualifier : require 
+
 //shader input
 layout (location = 3) in vec3 normal_interp;
 layout (location = 4) in vec2 tex_interp;
@@ -8,16 +11,23 @@ layout (location = 5) in vec3 position_interp;
 //output write
 layout (location = 0) out vec4 frag_color;
 
-layout(set = 0, binding = 0) uniform ViewMatrix {
-	mat4x4 data;
-} view;
+layout(set = 0, binding = 0) uniform Transforms {
+	mat4 view;
+    mat4 projection;
+    vec4 sun_direction;
+} transforms;
 
-layout(set = 3, binding = 0) uniform sampler2D diffuse_tex;
-layout(set = 4, binding = 0) uniform sampler2D normal_tex;
-layout(set = 5, binding = 0) uniform sampler2D specular_tex;
-layout(set = 2, binding = 0) uniform SunDirection {
-	vec4 data;
-} sun_direction;
+layout(set = 1, binding = 0) uniform sampler2D combined_img_samplers[];
+layout(set = 1, binding = 1) uniform texture2D sampled_images[];
+layout(set = 1, binding = 2) uniform sampler samplers[];
+layout(set = 1, binding = 3, rgba16f) uniform image2D storage_images[];
+
+layout( push_constant ) uniform PushConstants
+{
+	uint diffuse_texture_index;
+    uint specular_texture_index;
+    uint normal_texture_index;
+} indices;
 
 mat4 compute_tbn(in vec3 p, in vec3 n, in vec2 uv)
 {
@@ -158,16 +168,15 @@ float ev100_to_exposure(float ev100) {
 
 void main() 
 {
-	vec4 albedo = texture(diffuse_tex, tex_interp);
+	vec4 albedo = texture(combined_img_samplers[nonuniformEXT(indices.diffuse_texture_index)], tex_interp);
 	float ambient_energy = 20000.0f;
 	ambient_energy = 0.1f;
 	float solar_energy = 110000.0f;
 	solar_energy = 140000.0f;
-	vec4 sun_direction_transformed = vec4(normalize((view.data * sun_direction.data).xyz), 0.0);
-	frag_color = texture(normal_tex, tex_interp);
+	vec4 sun_direction_transformed = vec4(normalize((transforms.view * transforms.sun_direction).xyz), 0.0);
 	
 	// Sample normal from map, unpack RG components
-	vec2 packed_normal = texture(normal_tex, tex_interp).xy;
+	vec2 packed_normal = texture(combined_img_samplers[nonuniformEXT(indices.normal_texture_index)], tex_interp).xy;
 	vec3 tangent_space_normal = unpack_normal(packed_normal);
 
 	// Get TBN basis from interpolated normal, view space position, and uv. Transform light direction to tangent space
@@ -181,7 +190,7 @@ void main()
 	// Update this to sample from cubemap, sky blue for now
 	vec4 ambient_color = vec4(0.53f, 0.81f, 0.92f, 1.0f);
 	vec4 solar_color = vec4(0.992f, 0.984f, 0.828f, 1.0f);
-	vec4 specular_map_sample = texture(specular_tex, tex_interp);
+	vec4 specular_map_sample = texture(combined_img_samplers[nonuniformEXT(indices.specular_texture_index)], tex_interp);
 	float roughness = specular_map_sample.r;
 	float metalness = specular_map_sample.g;
 	vec3 tangent_space_view = normalize((tbn_basis * vec4(normalize(-position_interp), 0.0f)).xyz);

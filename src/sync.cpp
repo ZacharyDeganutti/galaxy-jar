@@ -35,4 +35,9 @@ namespace sync {
         VkImageSubresourceRange subresource_range = vk_image::make_subresource_range(VK_IMAGE_ASPECT_COLOR_BIT);
         transition_image(cmd, image, subresource_range, starting_layout, ending_layout);
     }
+
+    void transition_image(const VkCommandBuffer cmd, const VkImage image, const VkImageAspectFlagBits aspect_flags, const VkImageLayout starting_layout, const VkImageLayout ending_layout) {
+        VkImageSubresourceRange subresource_range = vk_image::make_subresource_range(aspect_flags);
+        transition_image(cmd, image, subresource_range, starting_layout, ending_layout);
+    }
 }

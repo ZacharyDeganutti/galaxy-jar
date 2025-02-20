@@ -50,33 +50,6 @@ namespace vk_descriptors {
 
     // Make a fat descriptor set for descriptor indexing
     MegaDescriptorSet init_mega_descriptor_set(const VkDevice device, DescriptorAllocator& descriptor_allocator, size_t pool_sizes, vk_types::CleanupProcedures& cleanup_procedures);
-
-    // TODO: Generalize descriptor creation in descriptor_set_builder.
-    // This will allow divorce from combined image samplers for cases where it makes sense to do so, such as textures written in compute shaders and read elsewhere
-    
-    // class DescriptorSetBuilder {
-    //     private:
-    //     const VkDevice device;
-    //     const VkShaderStageFlagBits stages;
-    //     DescriptorAllocator allocator;
-    //     std::vector<DescriptorType> descriptor_types;
-    //     std::vector<void*> handles;
-    //     vk_types::CleanupProcedures& descriptor_set_lifetime;
-    //     VkDescriptorSetLayout init_descriptor_set_layout();
-    //     public:
-    //     DescriptorSetBuilder(const VkDevice device, const VkShaderStageFlagBits stages, vk_types::CleanupProcedures& descriptor_set_lifetime);
-    //     void add_storage_image(const VkImageView image_view);
-    //     void add_combined_image_sampler(const VkImageView image_view, const VkSampler sampler);
-    //     void add_sampled_image(const VkImageView image_view);
-    //     void add_uniform_buffer(const VkBuffer buffer);
-    //     void add_storage_buffer(const VkBuffer buffer);
-    //     DescriptorSetBundle build();
-    // };
-
-    // class DescriptorPoolManager {
-    //     private:
-    //     DescriptorSetBundle descriptor_set;
-    // };
 }  // namespace vk_descriptors
 
 #endif

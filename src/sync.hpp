@@ -11,5 +11,7 @@ namespace sync {
     void transition_image(const VkCommandBuffer cmd, const VkImage image, const VkImageSubresourceRange range, const VkImageLayout starting_layout, const VkImageLayout ending_layout);
     // Same as above but assumes color subresource
     void transition_image(const VkCommandBuffer cmd, const VkImage image, const VkImageLayout starting_layout, const VkImageLayout ending_layout);
+    // Same but accepts aspect flags
+    void transition_image(const VkCommandBuffer cmd, const VkImage image, const VkImageAspectFlagBits aspect_flags, const VkImageLayout starting_layout, const VkImageLayout ending_layout);
 }
 #endif

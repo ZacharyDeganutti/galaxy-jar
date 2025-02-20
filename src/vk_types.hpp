@@ -33,7 +33,7 @@ namespace vk_descriptors {
         uint32_t register_sampled_image_descriptor(const VkDevice device, const VkImageView image_view);
         uint32_t register_sampler_descriptor(const VkDevice device, const VkSampler sampler);
         uint32_t register_storage_image_descriptor(const VkDevice device, const VkImageView image_view);
-        uint32_t register_storage_buffer_descriptor(const VkDevice device, const VkBuffer buffer);
+        // uint32_t register_storage_buffer_descriptor(const VkDevice device, const VkBuffer buffer);
     };
 }
 
@@ -150,10 +150,6 @@ namespace vk_types {
         std::vector<Synchronization> synchronization;
         VkFence fence_immediate;
         VmaAllocator allocator;
-        AllocatedImage draw_target;
-        AllocatedImage depth_buffer;
-        AllocatedImage jar_cutaway_mask;
-        AllocatedImage jar_cutaway_mask_depth;
         vk_descriptors::MegaDescriptorSet mega_descriptor_set;
         uint8_t buffer_count;
     };

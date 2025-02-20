@@ -1,14 +1,12 @@
 #version 450
+// For descriptor sampling
+#extension GL_EXT_nonuniform_qualifier : require 
 
 //shader input
 layout (location = 3) in vec3 normal_interp;
 
 //output write
 layout (location = 0) out vec4 frag_color;
-
-layout(set = 0, binding = 0) uniform ViewMatrix {
-	mat4x4 data;
-} view;
 
 
 void main() 
@@ -21,7 +19,8 @@ void main()
 	}
 	// If it's an inner surface, color in and feather the edges
 	else {
-		float adjusted = (magnitude > 0.5) ? 1.0f : 1.0f - pow(2.0f, -10.0f * magnitude);
+		// float adjusted = (magnitude > 0.5) ? 1.0f : 1.0f - pow(2.0f, -10.0f * magnitude);
+		float adjusted = 1.0f - pow(2.0f, -30.0f * magnitude);
 		frag_color = vec4(adjusted);
 	}
 }

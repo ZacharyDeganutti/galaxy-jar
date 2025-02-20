@@ -1,4 +1,6 @@
 #version 450
+// For descriptor sampling
+#extension GL_EXT_nonuniform_qualifier : require 
 
 //shader input
 layout (location = 0) in vec3 vertex;
@@ -7,13 +9,11 @@ layout (location = 2) in vec2 tex_coord;
 layout (location = 3) out vec3 normal_interp;
 
 //descriptor bindings for the pipeline
-layout(set = 0, binding = 0) uniform ViewMatrix {
-	mat4x4 data;
-} view;
-
-layout(set = 1, binding = 0) uniform ProjectionMatrix {
-	mat4x4 data;
-} projection;
+layout(set = 0, binding = 0) uniform Transforms {
+	mat4 view;
+    mat4 projection;
+    vec4 sun_direction;
+} transforms;
 
 layout(set = 2, binding = 0) uniform ModelMatrix {
 	mat4x4 data;
@@ -21,6 +21,6 @@ layout(set = 2, binding = 0) uniform ModelMatrix {
 
 void main() 
 {
-	gl_Position = projection.data * view.data * model.data * vec4(vertex, 1.0f);
-	normal_interp = normalize(transpose(inverse(mat3(view.data) * mat3(model.data))) * normal);
+	gl_Position = transforms.projection * transforms.view * model.data * vec4(vertex, 1.0f);
+	normal_interp = normalize(transpose(inverse(mat3(transforms.view) * mat3(model.data))) * normal);
 }

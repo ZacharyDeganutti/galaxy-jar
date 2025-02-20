@@ -1,17 +1,23 @@
 //GLSL version to use
 #version 460
+// For descriptor sampling
+#extension GL_EXT_nonuniform_qualifier : require 
 
 //size of a workgroup for compute
 layout (local_size_x = 16, local_size_y = 16) in;
 
 //descriptor bindings for the pipeline
-layout(rgba16f,set = 0, binding = 0) uniform image2D image;
+layout(set = 0, binding = 3, rgba16f) uniform image2D storage_images[];
 
+layout( push_constant ) uniform PushConstants
+{
+	uint grid_storage_index;
+} indices;
 
 void main() 
 {
     ivec2 texelCoord = ivec2(gl_GlobalInvocationID.xy);
-	ivec2 size = imageSize(image);
+	ivec2 size = imageSize(storage_images[nonuniformEXT(indices.grid_storage_index)]);
 
     if(texelCoord.x < size.x && texelCoord.y < size.y)
     {
@@ -23,6 +29,6 @@ void main()
             color.y = float(texelCoord.y)/(size.y);	
         }
     
-        imageStore(image, texelCoord, color);
+        imageStore(storage_images[nonuniformEXT(indices.grid_storage_index)], texelCoord, color);
     }
 }

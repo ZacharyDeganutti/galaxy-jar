@@ -271,7 +271,6 @@ namespace geometry {
         std::vector<vk_types::GpuMeshBuffers> mesh_resources = vk_buffer::create_mesh_buffers(context, host_model);
 
         const std::vector<VkDescriptorType> texture_descriptor_types = {VK_DESCRIPTOR_TYPE_COMBINED_IMAGE_SAMPLER};
-        VkDescriptorSetLayout texture_layout = vk_descriptors::init_descriptor_layout(context.device, VK_SHADER_STAGE_ALL_GRAPHICS, texture_descriptor_types, context.cleanup_procedures);
 
         // Upload textures for all materials
         VkSampler linear_texture_sampler = vk_image::init_linear_sampler(context);
@@ -362,7 +361,6 @@ namespace geometry {
         GpuModel gpu_model = {
             mesh_resources,
             material_buffers,
-            texture_layout,
             diffuse_texture_indices,
             normal_texture_indices,
             specular_texture_indices,

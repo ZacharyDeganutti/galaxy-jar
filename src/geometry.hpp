@@ -58,7 +58,6 @@ namespace geometry {
     struct GpuModel {
         std::vector<vk_types::GpuMeshBuffers> vertex_buffers;
         std::vector<vk_types::PersistentUniformBuffer<MaterialProperties>> material_buffers;
-        VkDescriptorSetLayout texture_layout;
         std::vector<uint32_t> diffuse_texture_indices;
         std::vector<uint32_t> normal_texture_indices;
         std::vector<uint32_t> specular_texture_indices;

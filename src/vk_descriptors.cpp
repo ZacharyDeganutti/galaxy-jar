@@ -61,9 +61,17 @@ namespace vk_descriptors {
             bindings.push_back(binding);
         }
 
+        // Set flags to enable partial binding of descriptors
+        std::vector<VkDescriptorBindingFlags> partial_binding_flags(bindings.size(), VK_DESCRIPTOR_BINDING_PARTIALLY_BOUND_BIT);
+        VkDescriptorSetLayoutBindingFlagsCreateInfo flags_create_info = {};
+        flags_create_info.bindingCount = partial_binding_flags.size();
+        flags_create_info.sType = VK_STRUCTURE_TYPE_DESCRIPTOR_SET_LAYOUT_BINDING_FLAGS_CREATE_INFO;
+        flags_create_info.pBindingFlags = partial_binding_flags.data();
+        flags_create_info.pNext = nullptr;
+
         VkDescriptorSetLayoutCreateInfo layout_info = {};
         layout_info.sType = VK_STRUCTURE_TYPE_DESCRIPTOR_SET_LAYOUT_CREATE_INFO;
-        layout_info.pNext = nullptr;
+        layout_info.pNext = &flags_create_info;
         layout_info.bindingCount = static_cast<uint32_t>(bindings.size());
         layout_info.pBindings = bindings.data();
 
@@ -211,13 +219,14 @@ namespace vk_descriptors {
             {VK_DESCRIPTOR_TYPE_SAMPLED_IMAGE, (float) pool_sizes},
             {VK_DESCRIPTOR_TYPE_SAMPLER, (float) pool_sizes},
             {VK_DESCRIPTOR_TYPE_STORAGE_IMAGE, (float) pool_sizes},
-            {VK_DESCRIPTOR_TYPE_STORAGE_BUFFER, (float) pool_sizes}
+            // {VK_DESCRIPTOR_TYPE_STORAGE_BUFFER, (float) pool_sizes} TODO: add this back in when I want to do BDA
         };
 
         descriptor_allocator.init_pool(device, 1, sizes);
 
-        std::vector<VkDescriptorType> descriptor_types = {VK_DESCRIPTOR_TYPE_COMBINED_IMAGE_SAMPLER, VK_DESCRIPTOR_TYPE_SAMPLED_IMAGE, VK_DESCRIPTOR_TYPE_SAMPLER, VK_DESCRIPTOR_TYPE_STORAGE_IMAGE, VK_DESCRIPTOR_TYPE_STORAGE_BUFFER};
-        VkDescriptorSetLayout descriptor_layout = vk_descriptors::init_descriptor_layout(device, VK_SHADER_STAGE_ALL_GRAPHICS, pool_sizes, descriptor_types, cleanup_procedures);
+        //std::vector<VkDescriptorType> descriptor_types = {VK_DESCRIPTOR_TYPE_COMBINED_IMAGE_SAMPLER, VK_DESCRIPTOR_TYPE_SAMPLED_IMAGE, VK_DESCRIPTOR_TYPE_SAMPLER, VK_DESCRIPTOR_TYPE_STORAGE_IMAGE, VK_DESCRIPTOR_TYPE_STORAGE_BUFFER};
+        std::vector<VkDescriptorType> descriptor_types = {VK_DESCRIPTOR_TYPE_COMBINED_IMAGE_SAMPLER, VK_DESCRIPTOR_TYPE_SAMPLED_IMAGE, VK_DESCRIPTOR_TYPE_SAMPLER, VK_DESCRIPTOR_TYPE_STORAGE_IMAGE};
+        VkDescriptorSetLayout descriptor_layout = vk_descriptors::init_descriptor_layout(device, (VkShaderStageFlagBits) (VK_SHADER_STAGE_ALL_GRAPHICS | VK_SHADER_STAGE_COMPUTE_BIT), pool_sizes, descriptor_types, cleanup_procedures);
         VkDescriptorSet buffer_descriptors = descriptor_allocator.allocate(device, descriptor_layout);
 
         cleanup_procedures.add([device, descriptor_allocator]() mutable {
@@ -321,6 +330,9 @@ namespace vk_descriptors {
 
         return index;
     }
+
+    // TODO: Solve this with buffer device addresses
+    /*
     uint32_t MegaDescriptorSet::register_storage_buffer_descriptor(const VkDevice device, const VkBuffer buffer) {
         constexpr uint32_t STORAGE_BUF_BINDING = 4;
         VkDescriptorBufferInfo buffer_info{};
@@ -342,100 +354,6 @@ namespace vk_descriptors {
 
         return index;
     }
+    */
 
-    // // DescriptorSetBuilder
-    // DescriptorSetBuilder::DescriptorSetBuilder(const VkDevice device, const VkShaderStageFlagBits stages, vk_types::CleanupProcedures& descriptor_set_lifetime) :
-    //     device(device),
-    //     stages(stages),
-    //     allocator({}),
-    //     descriptor_types({}),
-    //     handles({}),
-    //     descriptor_set_lifetime(descriptor_set_lifetime)
-    // {
-    // }
-
-    // void DescriptorSetBuilder::add_storage_image(const VkImageView image_view) {
-    //     descriptor_types.push_back(DescriptorType::StorageImage);
-    //     handles.push_back(reinterpret_cast<void *>(image_view));
-    // }
-
-    // void DescriptorSetBuilder::add_combined_image_sampler(const VkImageView image_view, const VkSampler sampler) {
-    //     descriptor_types.push_back(DescriptorType::CombinedImageSampler);
-    //     handles.push_back(reinterpret_cast<void *>(image_view));
-    //     handles.push_back(reinterpret_cast<void *>(sampler));
-    // }
-
-    // void DescriptorSetBuilder::add_sampled_image(const VkImageView image_view) {
-    //     descriptor_types.push_back(DescriptorType::SampledImage);
-    //     handles.push_back(reinterpret_cast<void *>(image_view));
-    // }
-
-    // void DescriptorSetBuilder::add_uniform_buffer(const VkBuffer buffer) {
-    //     descriptor_types.push_back(DescriptorType::UniformBuffer);
-    //     handles.push_back(reinterpret_cast<void *>(buffer));
-    // }
-
-    // void DescriptorSetBuilder::add_storage_buffer(const VkBuffer buffer) {
-    //     descriptor_types.push_back(DescriptorType::StorageBuffer);
-    //     handles.push_back(reinterpret_cast<void *>(buffer));
-    // }
-
-    // VkDescriptorSetLayout DescriptorSetBuilder::init_descriptor_set_layout() {
-    //     std::vector<VkDescriptorSetLayoutBinding> bindings;
-    //     for (size_t i = 0; i < descriptor_types.size(); ++i) {
-    //         VkDescriptorSetLayoutBinding binding{};
-    //         binding.binding = static_cast<uint32_t>(i);
-    //         binding.descriptorType = (VkDescriptorType) descriptor_types[i];
-    //         binding.descriptorCount = 1;
-    //         binding.stageFlags = stages;
-    //         binding.pImmutableSamplers = nullptr;
-    //         bindings.push_back(binding);
-    //     }
-
-    //     VkDescriptorSetLayoutCreateInfo layout_info = {};
-    //     layout_info.sType = VK_STRUCTURE_TYPE_DESCRIPTOR_SET_LAYOUT_CREATE_INFO;
-    //     layout_info.pNext = nullptr;
-    //     layout_info.bindingCount = static_cast<uint32_t>(bindings.size());
-    //     layout_info.pBindings = bindings.data();
-
-    //     VkDescriptorSetLayout descriptor_layout{};
-    //     if (vkCreateDescriptorSetLayout(device, &layout_info, nullptr, &descriptor_layout) != VK_SUCCESS) {
-    //         printf("Failed to create descriptor set layout!\n");
-    //         exit(EXIT_FAILURE);
-    //     }
-
-    //     VkDevice device_handle_copy = device;
-    //     descriptor_set_lifetime.add([device_handle_copy, descriptor_layout]() mutable {
-    //         vkDestroyDescriptorSetLayout(device_handle_copy, descriptor_layout, nullptr);
-    //     });
-
-    //     return descriptor_layout;
-    // }
-
-    // DescriptorSetBundle DescriptorSetBuilder::build() {
-    //     VkDescriptorSetLayout layout = init_descriptor_set_layout();
-    //     // These exist just so RAII doesn't drop the info in a higher scope
-    //     std::vector<VkDescriptorBufferInfo> buffer_info_holder;
-    //     std::vector<VkDescriptorImageInfo> image_info_holder;
-    //     // These are the writes that comprise each individual descriptor set in the bundle
-    //     std::vector<VkWriteDescriptorSet> descriptor_write_bundle;
-    //     size_t handle_idx = 0;
-    //     for (size_t descriptor_idx = 0; descriptor_idx < descriptor_types.size(); ++descriptor_idx) {
-    //         switch (descriptor_types[descriptor_idx]) {
-    //             case DescriptorType::CombinedImageSampler:
-
-    //                 break;
-    //             case DescriptorType::SampledImage:
-    //                 break;
-    //             case DescriptorType::StorageBuffer:
-    //                 break;
-    //             case DescriptorType::StorageImage:
-    //                 break;
-    //             case DescriptorType::UniformBuffer:
-    //                 break;
-    //             default:
-    //                 break;
-    //         }
-    //     }
-    // }
 }  // namespace vk_descriptors

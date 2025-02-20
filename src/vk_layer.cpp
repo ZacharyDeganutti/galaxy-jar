@@ -370,13 +370,7 @@ namespace vk_layer {
         return context.mega_descriptor_set.register_combined_image_sampler_descriptor(context.device, skybox_texture.image_view, texture_sampler); 
     }
     
-    Pipelines build_pipelines(vk_types::Context& context, const DescriptorSetLayouts& descriptor_layouts, vk_types::CleanupProcedures& lifetime) {
-        /// Setup descriptors for compute pipeline
-        vk_descriptors::DescriptorAllocator descriptor_allocator = {};
-        std::vector<VkDescriptorType> compute_descriptor_types = { VK_DESCRIPTOR_TYPE_STORAGE_IMAGE };
-        VkDescriptorSetLayout compute_descriptor_layout = vk_descriptors::init_descriptor_layout(context.device, VK_SHADER_STAGE_COMPUTE_BIT, compute_descriptor_types, lifetime);
-        VkDescriptorSet compute_descriptor_set = vk_descriptors::init_image_descriptors(context.device, context.draw_target.image_view, compute_descriptor_layout, descriptor_allocator, lifetime);
-
+    Pipelines build_pipelines(vk_types::Context& context, const DescriptorSetLayouts& descriptor_layouts, RenderTargets& render_targets, vk_types::CleanupProcedures& lifetime) {
         /// Assemble the 'default' gradient drawing compute pipeline
         vk_types::Pipeline grid_pipeline = {};
         {
@@ -402,7 +396,7 @@ namespace vk_layer {
             VkShaderModule frag_shader = vk_pipeline::init_shader_module(context.device, "../../../src/shaders/colored_triangle.glsl.frag.spv", lifetime);
             VkPushConstantRange graphics_pc_range = push_constant_range<SpacePassPushConstants>(VK_SHADER_STAGE_FRAGMENT_BIT);
             VkPipelineLayout graphics_pipeline_layout = vk_pipeline::init_pipeline_layout(context.device, descriptor_layouts.graphics, graphics_pc_range, lifetime);
-            vk_pipeline::GraphicsPipelineBuilder standard_render_pipeline_builder = vk_pipeline::GraphicsPipelineBuilder(context.device, graphics_pipeline_layout, vert_shader, frag_shader, context.draw_target.image_format, context.depth_buffer.image_format, lifetime);
+            vk_pipeline::GraphicsPipelineBuilder standard_render_pipeline_builder = vk_pipeline::GraphicsPipelineBuilder(context.device, graphics_pipeline_layout, vert_shader, frag_shader, render_targets.space.image_format, render_targets.space_depth.image_format, lifetime);
             space_pipeline = standard_render_pipeline_builder.build();
         }
 
@@ -413,7 +407,7 @@ namespace vk_layer {
             VkShaderModule skybox_frag_shader = vk_pipeline::init_shader_module(context.device, "../../../src/shaders/skybox.glsl.frag.spv", lifetime);
             VkPushConstantRange skybox_pc_range = push_constant_range<SkyboxPassPushConstants>(VK_SHADER_STAGE_FRAGMENT_BIT);
             VkPipelineLayout skybox_pipeline_layout = vk_pipeline::init_pipeline_layout(context.device, descriptor_layouts.skybox, skybox_pc_range, lifetime);
-            vk_pipeline::GraphicsPipelineBuilder skybox_render_pipeline_builder = vk_pipeline::GraphicsPipelineBuilder(context.device, skybox_pipeline_layout, skybox_vert_shader, skybox_frag_shader, context.draw_target.image_format, VK_FORMAT_UNDEFINED, lifetime);
+            vk_pipeline::GraphicsPipelineBuilder skybox_render_pipeline_builder = vk_pipeline::GraphicsPipelineBuilder(context.device, skybox_pipeline_layout, skybox_vert_shader, skybox_frag_shader, render_targets.space.image_format, VK_FORMAT_UNDEFINED, lifetime);
             // Set up rasterization the same, but so that the inside of the geometry is drawn
             VkPipelineRasterizationStateCreateInfo rasterization_info = {};
             rasterization_info.sType = VK_STRUCTURE_TYPE_PIPELINE_RASTERIZATION_STATE_CREATE_INFO;
@@ -446,7 +440,7 @@ namespace vk_layer {
             VkShaderModule jar_cutaway_mask_vert_shader = vk_pipeline::init_shader_module(context.device, "../../../src/shaders/jar_cutaway_mask.glsl.vert.spv", lifetime);
             VkShaderModule jar_cutaway_mask_frag_shader = vk_pipeline::init_shader_module(context.device, "../../../src/shaders/jar_cutaway_mask.glsl.frag.spv", lifetime);
             VkPipelineLayout jar_cutaway_mask_pipeline_layout = vk_pipeline::init_pipeline_layout(context.device, descriptor_layouts.jar_cutaway_mask, lifetime);
-            vk_pipeline::GraphicsPipelineBuilder jar_cutaway_mask_pipeline_builder = vk_pipeline::GraphicsPipelineBuilder(context.device, jar_cutaway_mask_pipeline_layout, jar_cutaway_mask_vert_shader, jar_cutaway_mask_frag_shader, context.jar_cutaway_mask.image_format, context.jar_cutaway_mask_depth.image_format, lifetime);
+            vk_pipeline::GraphicsPipelineBuilder jar_cutaway_mask_pipeline_builder = vk_pipeline::GraphicsPipelineBuilder(context.device, jar_cutaway_mask_pipeline_layout, jar_cutaway_mask_vert_shader, jar_cutaway_mask_frag_shader, render_targets.jar_mask.image_format, render_targets.jar_mask_depth.image_format, lifetime);
             // Set up rasterization so that both the inward and outward faces generate fragments
             VkPipelineRasterizationStateCreateInfo rasterization_info = {};
             rasterization_info.sType = VK_STRUCTURE_TYPE_PIPELINE_RASTERIZATION_STATE_CREATE_INFO;
@@ -493,8 +487,8 @@ namespace vk_layer {
 
         Pipelines pipes =  Pipelines {
             .jar_cutaway_mask = jar_cutaway_mask_pipeline,
-            .space = space_pipeline,
             .grid = grid_pipeline,
+            .space = space_pipeline,
             .skybox = skybox_pipeline,
             .compose = compose_pipeline
         };
@@ -543,7 +537,8 @@ namespace vk_layer {
             VK_IMAGE_USAGE_TRANSFER_DST_BIT 
             | VK_IMAGE_USAGE_TRANSFER_SRC_BIT 
             | VK_IMAGE_USAGE_STORAGE_BIT 
-            | VK_IMAGE_USAGE_COLOR_ATTACHMENT_BIT;
+            | VK_IMAGE_USAGE_COLOR_ATTACHMENT_BIT
+            | VK_IMAGE_USAGE_SAMPLED_BIT;
         VkExtent2D draw_target_extent = {
             context.swapchain.extent.width,
             context.swapchain.extent.height
@@ -701,7 +696,7 @@ namespace vk_layer {
                      state);
 
         // Draw the skybox onto the target
-        sync::transition_image(cmd, render_targets.space.image, VK_IMAGE_LAYOUT_GENERAL, VK_IMAGE_LAYOUT_COLOR_ATTACHMENT_OPTIMAL);
+        sync::transition_image(cmd, render_targets.space.image, VK_IMAGE_LAYOUT_UNDEFINED, VK_IMAGE_LAYOUT_COLOR_ATTACHMENT_OPTIMAL);
         auto get_skybox_descriptor_sets = [&](size_t piece) {
             std::vector<VkDescriptorSet> graphics_descriptor_sets = { 
                 state.skybox_dynamic_uniforms.get_descriptor_set(state.frame_in_flight),
@@ -715,13 +710,14 @@ namespace vk_layer {
             vkCmdPushConstants(cmd, pipelines.skybox.layout, VK_SHADER_STAGE_FRAGMENT_BIT, 0, sizeof(SkyboxPassPushConstants), &constants);
         };
         draw_background_skybox(cmd, get_skybox_descriptor_sets, set_skybox_push_constants, render_targets.space, pipelines.skybox, skybox, state);
-        sync::transition_image(cmd, render_targets.space.image, VK_IMAGE_LAYOUT_COLOR_ATTACHMENT_OPTIMAL, VK_IMAGE_LAYOUT_COLOR_ATTACHMENT_OPTIMAL);
 
         // Build the jar cutaway mask
+        sync::transition_image(cmd, render_targets.jar_mask.image, VK_IMAGE_LAYOUT_UNDEFINED, VK_IMAGE_LAYOUT_COLOR_ATTACHMENT_OPTIMAL);
         for (auto& jar : masking_jars) {
             auto get_jar_descriptor_sets = [&](size_t piece) {
                 std::vector<VkDescriptorSet> jar_descriptor_sets = { 
-                    state.main_dynamic_uniforms.get_descriptor_set(state.frame_in_flight), 
+                    state.main_dynamic_uniforms.get_descriptor_set(state.frame_in_flight),
+                    vk_res.mega_descriptor_set.bundle.set,
                     jar.transform.get_descriptor_set(state.frame_in_flight)
                 };
                 return jar_descriptor_sets;
@@ -731,6 +727,7 @@ namespace vk_layer {
         }
         
         // Draw the space scene
+        sync::transition_image(cmd, render_targets.space.image, VK_IMAGE_LAYOUT_COLOR_ATTACHMENT_OPTIMAL, VK_IMAGE_LAYOUT_COLOR_ATTACHMENT_OPTIMAL);
         for (auto& drawable : drawables) {
             auto get_graphics_descriptor_sets = [&](size_t piece) {
                 std::vector<VkDescriptorSet> graphics_descriptor_sets = { 
@@ -754,11 +751,11 @@ namespace vk_layer {
 
         // Compose the gbuffers together
         sync::transition_image(cmd, render_targets.compose_storage.image, VK_IMAGE_LAYOUT_UNDEFINED, VK_IMAGE_LAYOUT_GENERAL);
-        sync::transition_image(cmd, render_targets.space.image, VK_IMAGE_LAYOUT_UNDEFINED, VK_IMAGE_LAYOUT_READ_ONLY_OPTIMAL);
-        sync::transition_image(cmd, render_targets.space_depth.image, VK_IMAGE_LAYOUT_UNDEFINED, VK_IMAGE_LAYOUT_READ_ONLY_OPTIMAL);
-        sync::transition_image(cmd, render_targets.jar_mask.image, VK_IMAGE_LAYOUT_UNDEFINED, VK_IMAGE_LAYOUT_READ_ONLY_OPTIMAL);
-        sync::transition_image(cmd, render_targets.jar_mask_depth.image, VK_IMAGE_LAYOUT_UNDEFINED, VK_IMAGE_LAYOUT_READ_ONLY_OPTIMAL);
-        sync::transition_image(cmd, render_targets.grid.image, VK_IMAGE_LAYOUT_UNDEFINED, VK_IMAGE_LAYOUT_READ_ONLY_OPTIMAL);
+        sync::transition_image(cmd, render_targets.space.image, VK_IMAGE_LAYOUT_COLOR_ATTACHMENT_OPTIMAL, VK_IMAGE_LAYOUT_READ_ONLY_OPTIMAL);
+        sync::transition_image(cmd, render_targets.space_depth.image, VK_IMAGE_ASPECT_DEPTH_BIT, VK_IMAGE_LAYOUT_UNDEFINED, VK_IMAGE_LAYOUT_READ_ONLY_OPTIMAL);
+        sync::transition_image(cmd, render_targets.jar_mask.image, VK_IMAGE_LAYOUT_COLOR_ATTACHMENT_OPTIMAL, VK_IMAGE_LAYOUT_READ_ONLY_OPTIMAL);
+        sync::transition_image(cmd, render_targets.jar_mask_depth.image, VK_IMAGE_ASPECT_DEPTH_BIT, VK_IMAGE_LAYOUT_UNDEFINED, VK_IMAGE_LAYOUT_READ_ONLY_OPTIMAL);
+        sync::transition_image(cmd, render_targets.grid.image, VK_IMAGE_LAYOUT_GENERAL, VK_IMAGE_LAYOUT_READ_ONLY_OPTIMAL);
         auto get_compose_descriptor_sets = [&]() {
             std::vector<VkDescriptorSet> sets = {
                 vk_res.mega_descriptor_set.bundle.set
@@ -774,7 +771,7 @@ namespace vk_layer {
             constants.jar_mask_index = render_targets.jar_mask_index;
             constants.space_depth_index = render_targets.space_depth_index;
             constants.space_index = render_targets.space_index;
-            vkCmdPushConstants(cmd, pipelines.grid.layout, VK_SHADER_STAGE_COMPUTE_BIT, 0, sizeof(ComposePassPushConstants), &constants);
+            vkCmdPushConstants(cmd, pipelines.compose.layout, VK_SHADER_STAGE_COMPUTE_BIT, 0, sizeof(ComposePassPushConstants), &constants);
         };
         draw_compute(cmd, 
                      get_compose_descriptor_sets,

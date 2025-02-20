@@ -27,7 +27,7 @@ namespace vk_layer
         BufferedUniform() {}
         BufferedUniform(vk_types::Context& vk_context, const T initial_value, const size_t buffer_count, vk_types::CleanupProcedures& lifetime) : value(initial_value), uniform(std::vector<vk_types::UniformInfo<T>>()) {
             const std::vector<VkDescriptorType> descriptor_types = { static_cast<VkDescriptorType>(vk_descriptors::DescriptorType::UniformBuffer) };
-            auto descriptor_layout = vk_descriptors::init_descriptor_layout(vk_context.device, VK_SHADER_STAGE_ALL_GRAPHICS, descriptor_types, vk_context.cleanup_procedures);
+            auto descriptor_layout = vk_descriptors::init_descriptor_layout(vk_context.device, (VkShaderStageFlagBits) (VK_SHADER_STAGE_ALL_GRAPHICS | VK_SHADER_STAGE_COMPUTE_BIT), descriptor_types, vk_context.cleanup_procedures);
             uniform.reserve(buffer_count);
             for (size_t index = 0; index < buffer_count; ++index) {
                 vk_descriptors::DescriptorAllocator descriptor_allocator = {};
@@ -158,7 +158,7 @@ namespace vk_layer
 
     // Registers the skybox texture with the mega descriptor set as a combined sampler image, returns the descriptor index
     uint32_t upload_skybox(vk_types::Context& context, const vk_image::HostImage& skybox_image, vk_types::CleanupProcedures& lifetime);
-    Pipelines build_pipelines(vk_types::Context& context, const DescriptorSetLayouts& descriptor_layouts, vk_types::CleanupProcedures& lifetime);
+    Pipelines build_pipelines(vk_types::Context& context, const DescriptorSetLayouts& descriptor_layouts, RenderTargets& render_targets, vk_types::CleanupProcedures& lifetime);
     BufferedUniform<GlobalUniforms> build_global_uniforms(vk_types::Context& context, const size_t buffer_count, vk_types::CleanupProcedures& lifetime);
     BufferedUniform<SkyboxUniforms> build_skybox_uniforms(vk_types::Context& context, const size_t buffer_count, vk_types::CleanupProcedures& lifetime);
     RenderTargets build_render_targets(vk_types::Context& context, vk_types::CleanupProcedures& lifetime);
