@@ -39,6 +39,7 @@ namespace vk_init {
     SwapchainSupportDetails query_swapchain_support(const VkPhysicalDevice device, const VkSurfaceKHR surface);
     bool are_device_extensions_supported(const VkPhysicalDevice device, const std::vector<const char*>& required_extensions);
     bool are_vulkan_1_3_features_supported(const VkPhysicalDevice device);
+    bool are_vulkan_1_2_features_supported(const VkPhysicalDevice device);
     QueueFamilyCollection find_queue_families(const VkPhysicalDevice gpu);
     QueueFamilyCollection filter(const QueueFamilyCollection& families, const std::function<bool(size_t)> criteria);
     QueueFamilyCollection filter_for_feature_compatability(const QueueFamilyCollection& families, const VkQueueFlagBits queue_feature_flags);
@@ -107,6 +108,37 @@ namespace vk_init {
             if (next->sType == VK_STRUCTURE_TYPE_PHYSICAL_DEVICE_VULKAN_1_3_FEATURES) {
                 VkPhysicalDeviceVulkan13Features* features13 = reinterpret_cast<VkPhysicalDeviceVulkan13Features*>(next);
                 if (features13->synchronization2 && features13->dynamicRendering) {
+                    return true;
+                }
+                else {
+                    return false;
+                }
+            }
+            else {
+                next = reinterpret_cast<VkBaseOutStructure*>(next->pNext);
+            }
+        }
+        return false;
+    }
+
+    bool are_vulkan_1_2_features_supported(const VkPhysicalDevice device) {
+        VkPhysicalDeviceVulkan12Features features12prefill = {};
+        features12prefill.sType = VK_STRUCTURE_TYPE_PHYSICAL_DEVICE_VULKAN_1_2_FEATURES;
+        VkPhysicalDeviceFeatures2 features2 = {};
+        features2.sType = VK_STRUCTURE_TYPE_PHYSICAL_DEVICE_FEATURES_2;
+        features2.pNext = &features12prefill;
+        vkGetPhysicalDeviceFeatures2(device, &features2);
+        VkBaseOutStructure* next = reinterpret_cast<VkBaseOutStructure*>(features2.pNext);
+        while (next != nullptr) {
+            if (next->sType == VK_STRUCTURE_TYPE_PHYSICAL_DEVICE_VULKAN_1_2_FEATURES) {
+                VkPhysicalDeviceVulkan12Features* features12 = reinterpret_cast<VkPhysicalDeviceVulkan12Features*>(next);
+                if (features12->descriptorIndexing && 
+                    features12->descriptorBindingPartiallyBound && 
+                    features12->bufferDeviceAddress && 
+                    features12->runtimeDescriptorArray &&
+                    features12->shaderStorageImageArrayNonUniformIndexing &&
+                    features12->shaderSampledImageArrayNonUniformIndexing) 
+                {
                     return true;
                 }
                 else {
@@ -272,7 +304,9 @@ namespace vk_init {
 
             // Check if the given device supports the extensions that we need
             bool supports_extensions = are_device_extensions_supported(device, required_extensions);
-            bool supports_features = are_vulkan_1_3_features_supported(device);
+            bool supports_features = are_vulkan_1_2_features_supported(device) &&
+                                     are_vulkan_1_3_features_supported(device);
+
             // We also need to know if a graphics capable queue family exists
             QueueFamilyCollection queue_families = find_queue_families(device);
             QueueFamilyCollection supporting_graphics = filter_for_feature_compatability(queue_families, VK_QUEUE_GRAPHICS_BIT);
@@ -359,6 +393,11 @@ namespace vk_init {
         VkPhysicalDeviceVulkan12Features features12 = {};
         features12.sType = VK_STRUCTURE_TYPE_PHYSICAL_DEVICE_VULKAN_1_2_FEATURES;
         features12.bufferDeviceAddress = VK_TRUE;
+        features12.runtimeDescriptorArray = VK_TRUE;
+        features12.descriptorBindingPartiallyBound = VK_TRUE;
+        features12.descriptorIndexing = VK_TRUE;
+        features12.shaderStorageImageArrayNonUniformIndexing = VK_TRUE;
+        features12.shaderSampledImageArrayNonUniformIndexing = VK_TRUE;
         features12.pNext = &features13;
 
         VkPhysicalDeviceFeatures2 features2 = {};
@@ -670,35 +709,10 @@ namespace vk_init {
 
         const VmaAllocator allocator = init_allocator(vulkan_instance, vulkan_device, vulkan_gpu, cleanup_procedures);
 
-        // Provide an image that will be the intermediate draw target
-        VkFormat draw_target_format = VK_FORMAT_R16G16B16A16_SFLOAT;
-        VkImageUsageFlags draw_target_flags = 
-            VK_IMAGE_USAGE_TRANSFER_DST_BIT 
-            | VK_IMAGE_USAGE_TRANSFER_SRC_BIT 
-            | VK_IMAGE_USAGE_STORAGE_BIT 
-            | VK_IMAGE_USAGE_COLOR_ATTACHMENT_BIT;
-        VkExtent2D draw_target_extent = {
-            swapchain.extent.width,
-            swapchain.extent.height
-        };
+        vk_descriptors::DescriptorAllocator descriptor_allocator = {};
 
-        const uint32_t NO_MIPMAP = 1;
-        vk_types::AllocatedImage draw_target = vk_image::init_allocated_image(vulkan_device, allocator, vk_image::Representation::Flat, draw_target_format, draw_target_flags, NO_MIPMAP, draw_target_extent, cleanup_procedures);
-
-        // Allocate a depth target as well
-        // TODO: make more robust format checks
-        VkFormat depth_buffer_format = VK_FORMAT_D16_UNORM;
-        VkImageUsageFlags depth_buffer_flags = 
-            VK_IMAGE_USAGE_DEPTH_STENCIL_ATTACHMENT_BIT
-            | VK_IMAGE_USAGE_SAMPLED_BIT
-            | VK_IMAGE_USAGE_TRANSFER_DST_BIT;
-        VkExtent2D depth_buffer_extent = {
-            swapchain.extent.width,
-            swapchain.extent.height
-        };
-
-        vk_types::AllocatedImage depth_buffer = vk_image::init_allocated_image(vulkan_device, allocator, vk_image::Representation::Flat, depth_buffer_format, depth_buffer_flags, NO_MIPMAP, depth_buffer_extent, cleanup_procedures);
-
+        constexpr size_t POOL_SIZES = 1000;
+        vk_descriptors::MegaDescriptorSet mega_descriptor_set = vk_descriptors::init_mega_descriptor_set(vulkan_device, descriptor_allocator, POOL_SIZES, cleanup_procedures);
         return vk_types::Context {
             cleanup_procedures,
             vulkan_instance,
@@ -712,8 +726,7 @@ namespace vk_init {
             synchronization,
             fence_immediate,
             allocator,
-            draw_target,
-            depth_buffer,
+            mega_descriptor_set,
             DOUBLE_BUFFER
         };
     }

@@ -40,9 +40,6 @@ namespace vk_image {
 
     VkSampler init_linear_sampler(vk_types::Context& context);
     VkSampler init_linear_sampler(const vk_types::Context& context, vk_types::CleanupProcedures& lifetime);
-
-    void transition_image(const VkCommandBuffer cmd, const VkImage image, const VkImageSubresourceRange range, const VkImageLayout starting_layout, const VkImageLayout ending_layout);
-    void transition_image(const VkCommandBuffer cmd, const VkImage image, const VkImageLayout starting_layout, const VkImageLayout ending_layout);
     
     // Blits a source image to a destination image. Operates on a per-mipmap level basis
     void blit_image_to_image(const VkCommandBuffer cmd, const VkImage source, const VkImage destination, const VkExtent2D source_extent, const VkExtent2D destination_extent, const uint32_t source_miplevel, const uint32_t destination_miplevel);

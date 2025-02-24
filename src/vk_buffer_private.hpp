@@ -6,7 +6,7 @@
 #include "vk_mem_alloc.h"
 
 namespace vk_buffer {
-    vk_types::AllocatedBuffer upload_index_buffer(const vk_types::Context& context, vk_types::CleanupProcedures& cleanup_procedures);
+    vk_types::AllocatedBuffer upload_index_buffer(const vk_types::Context& context, const std::vector<uint32_t>& indices, vk_types::CleanupProcedures& cleanup_procedures);
 
     template <typename T>
     vk_types::GpuVertexAttribute upload_vertex_attribute(const vk_types::Context& context, const std::vector<T>& attribute_data, vk_types::CleanupProcedures& cleanup_procedures) {

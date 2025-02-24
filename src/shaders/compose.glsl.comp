@@ -1,0 +1,40 @@
+//GLSL version to use
+#version 460
+// For descriptor sampling
+#extension GL_EXT_nonuniform_qualifier : require 
+
+//size of a workgroup for compute
+layout (local_size_x = 16, local_size_y = 16) in;
+
+layout(set = 0, binding = 0) uniform sampler2D combined_img_samplers[];
+layout(set = 0, binding = 1) uniform texture2D sampled_images[];
+layout(set = 0, binding = 2) uniform sampler samplers[];
+layout(set = 0, binding = 3, rgba16f) uniform image2D storage_images[];
+
+layout( push_constant ) uniform PushConstants
+{
+	uint grid_sampled_index;
+    uint grid_sampler_index;
+    uint space_index;
+    uint space_depth_index;
+    uint jar_mask_index;
+    uint jar_mask_depth_index;
+    uint compose_storage_index;
+} indices;
+
+void main() 
+{
+    ivec2 texel_coord = ivec2(gl_GlobalInvocationID.xy);
+	ivec2 size = imageSize(storage_images[nonuniformEXT(indices.compose_storage_index)]);
+
+    vec2 sampler_coord = vec2(texel_coord.xy) / vec2(size); 
+
+    // Fade between parent and jar scene based on the blend factor from the jar mask
+    //float blend_factor = texture(jar_mask, sampler_coord).r;
+    float blend_factor = 1.0f - texture(combined_img_samplers[nonuniformEXT(indices.jar_mask_index)], sampler_coord).r;
+    vec4 grid_color = texture(sampler2D(sampled_images[nonuniformEXT(indices.grid_sampled_index)], samplers[nonuniformEXT(indices.grid_sampler_index)]), sampler_coord);
+    vec4 space_color = texture(combined_img_samplers[nonuniformEXT(indices.space_index)], sampler_coord);
+    vec4 color = mix(space_color, grid_color, blend_factor);
+
+    imageStore(storage_images[nonuniformEXT(indices.compose_storage_index)], texel_coord, color);
+}
